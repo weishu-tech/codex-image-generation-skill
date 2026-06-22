@@ -73,7 +73,6 @@ After persistent Windows setup, restart the terminal or Codex so the new environ
 ```text
 install.py
 AI_INSTALL.md
-ONLINE_INSTALL_DOC.md
 skill/
   ccws-image-generation/
     SKILL.md

@@ -6,9 +6,9 @@
 
 ## 使用方式
 
-### 方式一：下载安装包
+从 [Releases](https://github.com/xiaofengtongxue-lab/ccws-codex-image-skill/releases) 下载对应版本的安装包。
 
-下载仓库中的：
+当前版本：
 
 ```text
 ccws-image-generation-installer.zip
@@ -25,16 +25,6 @@ Windows PowerShell:
 ```powershell
 py -3 .\install.py --yes
 ```
-
-### 方式二：让 AI 读取在线文档
-
-把这个文件交给 AI：
-
-```text
-ccws-image-generation-installer/ONLINE_INSTALL_DOC.md
-```
-
-该文档是自包含版本，即使不下载 zip，AI 也可以根据文档生成并安装同一套本地技能。
 
 ## 安装流程
 
@@ -74,5 +64,5 @@ $env:CCWS_IMAGE_API_KEY="你的 CCWSPro 令牌"
 压缩包 SHA256：
 
 ```text
-5a8cc54428e8c655496b87db9ea8320696275b5d2f4eb23aa470c9c41e070504
+b891152a15527fecc62197fa148a7595916b62673acd80da39ca2f5fc4848b17
 ```
