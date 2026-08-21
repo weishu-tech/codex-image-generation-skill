@@ -2,15 +2,15 @@
 
 Use this reference when advanced request controls are needed.
 
-Current version: `1.0.0`. The canonical version source is the skill root `VERSION` file; the CLI exposes it through `--version`.
+Current version: `1.2.0`. The canonical version source is the skill root `VERSION` file; the platform launchers expose it through `--version`.
 
 ## URL construction
 
-`scripts/ccws_image_generation.py` uses a root base URL plus an API prefix:
+`scripts/ccws_image_generation.py` requires one configured API address. It has no built-in default, appends `/v1` when missing, and then appends the image endpoint:
 
 ```text
-base_url: https://www.ccws.pro/
-api_prefix: /v1
+input: https://www.ccws.pro
+api_url: https://www.ccws.pro/v1
 generate: https://www.ccws.pro/v1/images/generations
 edit: https://www.ccws.pro/v1/images/edits
 ```
@@ -18,49 +18,47 @@ edit: https://www.ccws.pro/v1/images/edits
 Override when needed:
 
 ```bash
---base-url "https://www.ccws.pro/"
---api-prefix "/v1"
---api-prefix ""
+--api-url "https://www.ccws.pro"
+--config-file "/path/to/image-generation.json"
 ```
 
-Set environment defaults:
+Legacy `--base-url` and `--api-prefix` options remain available for compatibility.
+
+Set environment overrides:
 
 ```bash
-export CCWS_IMAGE_BASE_URL="https://www.ccws.pro/"
-export CCWS_IMAGE_API_PREFIX="/v1"
+export CCWS_IMAGE_API_URL="https://www.ccws.pro"
+export CCWS_IMAGE_CONFIG="/optional/custom/image-generation.json"
 ```
 
 ## Authentication
 
-The CLI requires one environment variable:
+The one-click installer saves the API root and API Key in the current user's application configuration directory:
 
-```bash
-CCWS_IMAGE_API_KEY
+```text
+macOS:  ~/Library/Application Support/CCWS/image-generation.json
+Windows: %APPDATA%\CCWS\image-generation.json
 ```
 
-It does not fall back to `OPENAI_API_KEY` or `~/.codex/auth.json`.
+On POSIX systems an installer-created config directory is limited to the current user and the file is written with mode `0600`. On Windows the file inherits the current user's AppData permissions.
 
-Current macOS/zsh setup:
+The same file records the installer-managed Python executable and, on macOS, the framework, library, and CA certificate paths. Use `scripts/run-ccws-image-generation.command` on macOS or `scripts/run-ccws-image-generation.ps1` on Windows so those runtime settings are applied automatically. Do not print the configuration file because it also contains the API Key.
+
+Environment variables override the saved values for a single process or terminal session:
 
 ```bash
+export CCWS_IMAGE_API_URL="https://www.ccws.pro"
 export CCWS_IMAGE_API_KEY="your-ccws-token"
 ```
 
-Windows PowerShell setup:
+Windows PowerShell:
 
 ```powershell
+$env:CCWS_IMAGE_API_URL="https://www.ccws.pro"
 $env:CCWS_IMAGE_API_KEY="your-ccws-token"
-[Environment]::SetEnvironmentVariable("CCWS_IMAGE_API_KEY", "your-ccws-token", "User")
 ```
 
-Persistent setup:
-
-```bash
-echo 'export CCWS_IMAGE_API_KEY="your-ccws-token"' >> ~/.zshrc
-source ~/.zshrc
-```
-
-The token must be created in the CCWSPro console and include access to `model: gpt-image-2`.
+The CLI does not fall back to `OPENAI_API_KEY` or Codex authentication files. The token must include access to `model: gpt-image-2`.
 
 ## JSON generation payload
 
@@ -118,6 +116,8 @@ If a response contains more images than `--n`, the script creates additional num
 
 ## Script structure
 
+- `scripts/run-ccws-image-generation.command`: macOS runtime launcher.
+- `scripts/run-ccws-image-generation.ps1`: Windows runtime launcher.
 - `scripts/ccws_image_generation.py`: cross-platform main CLI. Handles auth, URL construction, HTTP, multipart upload, response decoding, output files, dry-run, and model dispatch.
 - `scripts/models/__init__.py`: model registry.
 - `scripts/models/gpt_image_2.py`: current gpt-image-2 parameter definitions, payload construction, and validation.
@@ -128,7 +128,8 @@ To add a future model, create a new `scripts/models/<model_name>.py` file with t
 
 - HTTP or provider errors include CLI version, endpoint, status, response body, request id when present, and `请在售后群咨询。`
 - 401: credential reached CCWS but was rejected.
-- Missing `CCWS_IMAGE_API_KEY`: create a CCWSPro token with `model: gpt-image-2`, then export it in the current environment.
-- 404: retry with `--api-prefix ""` if the endpoint might not use `/v1`.
+- Missing API Key: rerun the one-click installer, or set `CCWS_IMAGE_API_KEY` for the current process.
+- Missing Python 3: rerun the one-click installer. It installs a private, user-level Python runtime without changing PATH or the system Python.
+- 404: check the saved API root and proxy path. The installer and CLI automatically append `/v1` when it is missing.
 - `background=transparent`: current `gpt-image-2` model file rejects this before sending because gpt-image-2 does not support true transparent output.
 - Multipart edit field errors: retry with `--image-field "image[]"`.

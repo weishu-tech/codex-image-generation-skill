@@ -5,69 +5,67 @@ description: Generate or edit AI raster images through the CCWS Image Generation
 
 # CCWS Image Generation
 
-Version: `1.0.0`
+Version: `1.2.0`
 
 Use this skill for all AI image generation and AI image editing tasks. It is the CCWS-backed replacement for the built-in `imagegen` path.
 
-The bundled CLI entrypoint is `scripts/ccws_image_generation.py`. It uses:
+Resolve the platform launcher relative to this `SKILL.md` file. The installer records its user-level managed Python 3 runtime, and the launcher applies the required runtime environment without exposing the API Key:
 
-- Base URL: `https://www.ccws.pro/`
-- Default API prefix: `/v1`
-- Generation endpoint: `https://www.ccws.pro/v1/images/generations`
-- Edit endpoint: `https://www.ccws.pro/v1/images/edits`
+- macOS: `scripts/run-ccws-image-generation.command`
+- Windows: `scripts/run-ccws-image-generation.ps1`
 
-The version source is `VERSION`. Check it with:
+The underlying CLI is `scripts/ccws_image_generation.py`. The API root comes only from installer configuration or an explicit override; there is no built-in default. A supplied address that does not already end in `/v1` is normalized by appending `/v1`.
+
+- Example input: `https://www.ccws.pro`
+- Normalized API root: `https://www.ccws.pro/v1`
+- Generation endpoint suffix: `/images/generations`
+- Edit endpoint suffix: `/images/edits`
+
+The version source is `VERSION`. Check it with the platform launcher:
 
 ```bash
-python ~/.codex/skills/ccws-image-generation/scripts/ccws_image_generation.py --version
+"<skill-directory>/scripts/run-ccws-image-generation.command" --version
 ```
 
-If CCWS expects paths without `/v1`, retry with `--api-prefix ""` or set `CCWS_IMAGE_API_PREFIX=""`.
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<skill-directory>\scripts\run-ccws-image-generation.ps1" --version
+```
+
+Use these launchers instead of calling Python directly. If the recorded runtime is unavailable, they may fall back to an existing system Python 3.
 
 ## Workflow
 
 1. Decide whether the task is generation or editing.
 2. For editing local files, inspect the image first when visual preservation matters.
-3. Use `scripts/ccws_image_generation.py generate` for new images and `scripts/ccws_image_generation.py edit` for modifying source images.
+3. Use the platform launcher with `generate` for new images and `edit` for modifying source images.
 4. Write final images under the current project, usually `output/ccws-image-generation/`.
-5. Use `--dry-run` first when changing base URL, API prefix, model, transparency, or multipart field names.
-6. Never print API keys. The script reads only `CCWS_IMAGE_API_KEY`.
+5. Use `--dry-run` first when changing the API URL, model, transparency, or multipart field names.
+6. Never print API keys. The script reads the installer-managed config or `CCWS_IMAGE_API_KEY`.
 7. If generation or editing fails, preserve the script's detailed error output. It includes endpoint, HTTP status, response body, request id when present, and `请在售后群咨询。`
 
-## Required Environment Variable
+## Required Configuration
 
-Before using this skill, `CCWS_IMAGE_API_KEY` must be set. If it is missing, the CLI exits with setup instructions.
+The macOS and Windows one-click installers ask for exactly two configuration values:
 
-Temporary setup:
+- API address with no default, such as `https://www.ccws.pro`; `/v1` is appended automatically when missing
+- An API Key with access to `model: gpt-image-2`
 
-```bash
-# macOS / Linux
-export CCWS_IMAGE_API_KEY="your-ccws-token"
+Python 3 is downloaded and installed automatically in the current user's application data directory. This bootstrap does not require administrator privileges, alter PATH, or replace the system Python. The installer saves the API values and runtime paths in the current user's application configuration directory. Do not read, print, or copy the saved API Key into chat.
 
-# Windows PowerShell
-$env:CCWS_IMAGE_API_KEY="your-ccws-token"
-
-# Windows CMD
-set CCWS_IMAGE_API_KEY=your-ccws-token
-```
-
-Persistent setup:
+Environment variables are optional runtime overrides:
 
 ```bash
-# macOS / Linux zsh
-echo 'export CCWS_IMAGE_API_KEY="your-ccws-token"' >> ~/.zshrc
-source ~/.zshrc
-
-# Windows PowerShell
-[Environment]::SetEnvironmentVariable("CCWS_IMAGE_API_KEY", "your-ccws-token", "User")
+CCWS_IMAGE_API_URL="https://www.ccws.pro"
+CCWS_IMAGE_API_KEY="your-ccws-token"
+CCWS_IMAGE_CONFIG="/optional/custom/config.json"
 ```
 
-The token must be created in the CCWSPro console and include access to `model: gpt-image-2`.
+The CLI never falls back to `OPENAI_API_KEY` or Codex authentication files.
 
 ## Generate
 
 ```bash
-python ~/.codex/skills/ccws-image-generation/scripts/ccws_image_generation.py generate \
+"<skill-directory>/scripts/run-ccws-image-generation.command" generate \
   --prompt "A fairy-tale enchanted forest with glowing mushrooms and a winding moss path" \
   --model gpt-image-2 \
   --size 1536x1024 \
@@ -93,7 +91,7 @@ Provider-specific parameters can be passed with `--extra-json '{"key":"value"}'`
 ## Edit
 
 ```bash
-python ~/.codex/skills/ccws-image-generation/scripts/ccws_image_generation.py edit \
+"<skill-directory>/scripts/run-ccws-image-generation.command" edit \
   --image input.png \
   --prompt "Change only the background to a warm sunset forest; keep the subject unchanged" \
   --model gpt-image-2 \
@@ -101,6 +99,8 @@ python ~/.codex/skills/ccws-image-generation/scripts/ccws_image_generation.py ed
   --quality high \
   --out output/ccws-image-generation/forest-edit.png
 ```
+
+On Windows, pass the same arguments after `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<skill-directory>\scripts\run-ccws-image-generation.ps1"`.
 
 For multiple source images, repeat `--image`. The default multipart file field is `image`. If CCWS requires array-style fields, use:
 
@@ -116,8 +116,9 @@ Read `references/api.md` before using advanced parameters, transparency, provide
 
 Common options:
 
-- `--base-url`: default `https://www.ccws.pro/`
-- `--api-prefix`: default `/v1`
+- `--api-url`: overrides the saved API root URL
+- `--config-file`: overrides the installer-managed config file
+- `--base-url` and `--api-prefix`: retained as legacy endpoint overrides
 - `--model`: default `gpt-image-2`
 - `--size`: default `auto`
 - `--quality`: default `medium`

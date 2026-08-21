@@ -1,21 +1,37 @@
 #!/usr/bin/env python3
-"""Install the CCWS Image Generation skill for Codex."""
+"""Install and configure the CCWS Image Generation skill for Codex."""
 
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
+import getpass
+import json
 import os
 from pathlib import Path
 import shutil
+import stat
 import sys
-from datetime import datetime
-from typing import Iterable, List, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
+import urllib.parse
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
 BUNDLED_SKILL = PACKAGE_ROOT / "skill" / "ccws-image-generation"
 SKILL_NAME = "ccws-image-generation"
+MODEL_ID = "gpt-image-2"
+
+API_URL_EXAMPLE = "https://api.example.com/v1"
+API_URL_ENV = "CCWS_IMAGE_API_URL"
 API_KEY_ENV = "CCWS_IMAGE_API_KEY"
+CONFIG_ENV = "CCWS_IMAGE_CONFIG"
+RUNTIME_CONFIG_FIELDS = (
+    "python_executable",
+    "python_framework_path",
+    "python_library_path",
+    "ssl_cert_file",
+)
+
 OFFICIAL_IMAGE_SKILL_REL = ".system/imagegen"
 IMAGE_SKILL_KEYWORDS = (
     "imagegen",
@@ -30,55 +46,59 @@ IMAGE_SKILL_KEYWORDS = (
 )
 
 
-SETUP_INSTRUCTIONS = """需要先配置 CCWS_IMAGE_API_KEY，安装脚本已停止，未写入本地技能。
-
-请先完成：
-1. 登录 CCWSPro 控制台。
-2. 创建一个生图分组 API KEY，令牌需要包含 model: gpt-image-2。
-3. 在当前环境配置变量 CCWS_IMAGE_API_KEY。
-
-临时配置：
-- macOS / Linux:
-  export CCWS_IMAGE_API_KEY="你的 CCWSPro 令牌"
-- Windows PowerShell:
-  $env:CCWS_IMAGE_API_KEY="你的 CCWSPro 令牌"
-- Windows CMD:
-  set CCWS_IMAGE_API_KEY=你的 CCWSPro 令牌
-
-永久配置：
-- macOS / Linux zsh:
-  echo 'export CCWS_IMAGE_API_KEY="你的 CCWSPro 令牌"' >> ~/.zshrc
-  source ~/.zshrc
-- macOS / Linux bash:
-  echo 'export CCWS_IMAGE_API_KEY="你的 CCWSPro 令牌"' >> ~/.bashrc
-  source ~/.bashrc
-- Windows PowerShell:
-  [Environment]::SetEnvironmentVariable("CCWS_IMAGE_API_KEY", "你的 CCWSPro 令牌", "User")
-
-验证：
-- macOS / Linux:
-  echo "$CCWS_IMAGE_API_KEY"
-- Windows PowerShell:
-  echo $env:CCWS_IMAGE_API_KEY
-
-不要把令牌直接发到聊天里。"""
-
-
-def _codex_home(args: argparse.Namespace) -> Path:
+def _codex_home(args: argparse.Namespace) -> Optional[Path]:
     if args.skills_dir:
-        return Path(args.skills_dir).expanduser().resolve().parent
+        return None
     if args.codex_home:
         return Path(args.codex_home).expanduser().resolve()
     raw = os.environ.get("CODEX_HOME")
     if raw:
         return Path(raw).expanduser().resolve()
-    return (Path.home() / ".codex").resolve()
+    return None
 
 
 def _skills_dir(args: argparse.Namespace) -> Path:
     if args.skills_dir:
         return Path(args.skills_dir).expanduser().resolve()
-    return _codex_home(args) / "skills"
+
+    codex_home = _codex_home(args)
+    if codex_home is not None:
+        return codex_home / "skills"
+
+    modern = (Path.home() / ".agents" / "skills").resolve()
+    legacy = (Path.home() / ".codex" / "skills").resolve()
+
+    # Keep existing installations in place. Fresh installs use the current
+    # user-level Codex skill directory documented by OpenAI.
+    if (modern / SKILL_NAME).exists() or (modern / SKILL_NAME).is_symlink():
+        return modern
+    if (legacy / SKILL_NAME).exists() or (legacy / SKILL_NAME).is_symlink():
+        return legacy
+    return modern
+
+
+def _default_config_file() -> Path:
+    override = os.environ.get(CONFIG_ENV, "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+
+    if sys.platform == "win32":
+        app_data = os.environ.get("APPDATA", "").strip()
+        root = Path(app_data) if app_data else Path.home() / "AppData" / "Roaming"
+        return (root / "CCWS" / "image-generation.json").resolve()
+
+    if sys.platform == "darwin":
+        return (Path.home() / "Library" / "Application Support" / "CCWS" / "image-generation.json").resolve()
+
+    xdg_config = os.environ.get("XDG_CONFIG_HOME", "").strip()
+    root = Path(xdg_config).expanduser() if xdg_config else Path.home() / ".config"
+    return (root / "ccws" / "image-generation.json").resolve()
+
+
+def _config_file(args: argparse.Namespace) -> Path:
+    if args.config_file:
+        return Path(args.config_file).expanduser().resolve()
+    return _default_config_file()
 
 
 def _read_text(path: Path) -> str:
@@ -86,6 +106,18 @@ def _read_text(path: Path) -> str:
         return path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return ""
+
+
+def _read_config(path: Path) -> Dict[str, str]:
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"Existing configuration could not be read: {path}\n{exc}") from exc
+    if not isinstance(data, dict):
+        raise SystemExit(f"Existing configuration must be a JSON object: {path}")
+    return {str(key): str(value) for key, value in data.items() if isinstance(value, (str, int, float, bool))}
 
 
 def _iter_skill_dirs(skills_root: Path) -> Iterable[Path]:
@@ -126,36 +158,131 @@ def _print_skill_scan(skills_root: Path, official: List[Path], target: List[Path
         print("Official image skill detected:")
         for path in official:
             print(f"  - {path}")
-    else:
-        print("Official image skill was not found under this skills directory.")
 
     if target:
-        print("Existing CCWS Image Generation skill will be replaced:")
+        print("Existing CCWS Image Generation skill will be upgraded in place:")
         for path in target:
             print(f"  - {path}")
 
     if other:
-        print("Potential non-official image generation skills detected.")
-        print("Recommendation: uninstall or move these first to avoid trigger conflicts. You may still continue.")
+        print("Warning: potential non-official image generation skills were detected.")
+        print("They will not be changed, but overlapping trigger descriptions may cause routing conflicts:")
         for path in other:
             print(f"  - {path}")
 
 
-def _confirm_continue(args: argparse.Namespace, other: List[Path]) -> None:
-    if not other or args.yes:
-        return
-    if not sys.stdin.isatty():
-        raise SystemExit("Non-official image generation skills were found. Re-run with --yes to continue anyway.")
-    answer = input("Continue installation anyway? [y/N] ").strip().lower()
-    if answer not in {"y", "yes"}:
-        raise SystemExit("Installation cancelled. Remove conflicting skills or re-run with --yes to continue.")
+def _normalize_api_url(raw: str) -> str:
+    value = raw.strip()
+    if not value:
+        raise ValueError("API address cannot be empty.")
+    if "://" not in value:
+        value = f"https://{value}"
+
+    parsed = urllib.parse.urlsplit(value)
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError("API address must use http:// or https://.")
+    if not parsed.hostname:
+        raise ValueError("API address must include a host name.")
+    if parsed.username or parsed.password:
+        raise ValueError("API address must not contain embedded credentials.")
+    if parsed.query or parsed.fragment:
+        raise ValueError("API address must not contain a query string or fragment.")
+
+    path = parsed.path.rstrip("/")
+    for endpoint in ("/images/generations", "/images/edits"):
+        if path.lower().endswith(endpoint):
+            path = path[: -len(endpoint)].rstrip("/")
+            break
+
+    if path.lower().endswith("/v1"):
+        path = f"{path[:-3]}/v1"
+    else:
+        path = f"{path}/v1" if path else "/v1"
+
+    return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, path, "", "")).rstrip("/")
 
 
-def _require_api_key() -> None:
-    if os.environ.get(API_KEY_ENV, "").strip():
-        print(f"{API_KEY_ENV} is configured in the current environment.")
-        return
-    raise SystemExit(SETUP_INSTRUCTIONS)
+def _prompt_api_url(existing: str) -> str:
+    while True:
+        suffix = "（直接回车沿用现有地址）" if existing else ""
+        raw = input(f"API 地址{suffix}: ").strip()
+        if not raw:
+            if existing:
+                return existing
+            print("API 地址不能为空。")
+            continue
+        try:
+            return _normalize_api_url(raw)
+        except ValueError as exc:
+            print(f"API 地址无效：{exc}")
+
+
+def _prompt_api_key(existing: str) -> str:
+    while True:
+        suffix = "（直接回车沿用现有 Key）" if existing else ""
+        value = getpass.getpass(f"支持 {MODEL_ID} 的 API Key{suffix}: ").strip()
+        if value:
+            return value
+        if existing:
+            return existing
+        print("API Key 不能为空。")
+
+
+def _resolve_configuration(args: argparse.Namespace, existing: Dict[str, str]) -> Tuple[str, str]:
+    raw_existing_url = (
+        args.api_url
+        or os.environ.get(API_URL_ENV, "").strip()
+        or existing.get("api_url", "").strip()
+    )
+    existing_url = ""
+    if raw_existing_url:
+        try:
+            existing_url = _normalize_api_url(raw_existing_url)
+        except ValueError as exc:
+            raise SystemExit(f"Configured API address is invalid: {exc}") from exc
+
+    existing_key = (
+        args.api_key
+        or os.environ.get(API_KEY_ENV, "").strip()
+        or existing.get("api_key", "").strip()
+    )
+
+    interactive = args.interactive or (sys.stdin.isatty() and not args.non_interactive)
+    if interactive:
+        api_url = _prompt_api_url(existing_url)
+        api_key = _prompt_api_key(existing_key)
+        return api_url, api_key
+
+    if not existing_key:
+        raise SystemExit(
+            f"Missing API Key. Pass --api-key, set {API_KEY_ENV}, or run the installer interactively."
+        )
+    if not existing_url:
+        raise SystemExit(
+            f"Missing API address. Pass --api-url, set {API_URL_ENV}, or run the installer interactively."
+        )
+    return existing_url, existing_key
+
+
+def _normalized_runtime_path(raw: str) -> str:
+    return str(Path(raw).expanduser().resolve())
+
+
+def _resolve_runtime_configuration(args: argparse.Namespace) -> Dict[str, str]:
+    executable = _normalized_runtime_path(args.python_executable or sys.executable)
+    if not Path(executable).is_file():
+        raise SystemExit(f"Python executable not found: {executable}")
+
+    runtime = {"python_executable": executable}
+    optional_values = {
+        "python_framework_path": args.python_framework_path,
+        "python_library_path": args.python_library_path,
+        "ssl_cert_file": args.ssl_cert_file,
+    }
+    for key, raw in optional_values.items():
+        if raw:
+            runtime[key] = _normalized_runtime_path(raw)
+    return runtime
 
 
 def _validate_bundle() -> str:
@@ -175,10 +302,12 @@ def _validate_bundle() -> str:
 
 def _unique_backup_path(target: Path) -> Path:
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    candidate = target.with_name(f"{target.name}.backup-{stamp}")
+    backup_root = target.parent.parent / "skill-backups"
+    backup_root.mkdir(parents=True, exist_ok=True)
+    candidate = backup_root / f"{target.name}.backup-{stamp}"
     suffix = 1
     while candidate.exists():
-        candidate = target.with_name(f"{target.name}.backup-{stamp}-{suffix}")
+        candidate = backup_root / f"{target.name}.backup-{stamp}-{suffix}"
         suffix += 1
     return candidate
 
@@ -188,7 +317,7 @@ def _install_skill(skills_root: Path, dry_run: bool) -> None:
     target = skills_root / SKILL_NAME
     print(f"Installing {SKILL_NAME} {version} to {target}")
     if dry_run:
-        print("Dry run enabled; no files were written.")
+        print("Dry run enabled; no skill files were written.")
         return
 
     skills_root.mkdir(parents=True, exist_ok=True)
@@ -205,24 +334,89 @@ def _install_skill(skills_root: Path, dry_run: bool) -> None:
             shutil.move(str(backup_path), str(target))
         raise
 
-    print("Installation completed.")
-    print("Next step: open a new Codex conversation or restart Codex, then request image generation again.")
+
+def _write_config(
+    path: Path,
+    api_url: str,
+    api_key: str,
+    runtime: Dict[str, str],
+    dry_run: bool,
+) -> None:
+    print(f"Configuration file: {path}")
+    if dry_run:
+        print("Dry run enabled; no configuration was written.")
+        return
+
+    parent_existed = path.parent.exists()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if os.name != "nt" and not parent_existed:
+        path.parent.chmod(stat.S_IRWXU)
+
+    data = {
+        "api_url": api_url,
+        "api_key": api_key,
+        "model": MODEL_ID,
+        "updated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+    }
+    data.update({key: value for key, value in runtime.items() if key in RUNTIME_CONFIG_FIELDS})
+    temporary = path.with_name(f".{path.name}.tmp-{os.getpid()}")
+    try:
+        temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        if os.name != "nt":
+            temporary.chmod(stat.S_IRUSR | stat.S_IWUSR)
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Install the CCWS Image Generation skill for Codex.")
-    parser.add_argument("--yes", action="store_true", help="Continue even if non-official image skills are detected.")
-    parser.add_argument("--codex-home", help="Override CODEX_HOME; defaults to $CODEX_HOME or ~/.codex.")
+    parser = argparse.ArgumentParser(description="Install and configure CCWS Image Generation for Codex.")
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Compatibility flag. Conflicting skills are reported but never modified.",
+    )
+    parser.add_argument("--codex-home", help="Override CODEX_HOME and install under its skills directory.")
     parser.add_argument("--skills-dir", help="Override the skills directory directly.")
-    parser.add_argument("--dry-run", action="store_true", help="Run checks without copying files.")
+    parser.add_argument("--config-file", help=f"Override the configuration file or set {CONFIG_ENV}.")
+    parser.add_argument(
+        "--api-url",
+        help=f"API address, for example {API_URL_EXAMPLE}; /v1 is appended automatically when missing.",
+    )
+    parser.add_argument("--api-key", help="API Key for automation only; interactive entry is safer.")
+    parser.add_argument("--interactive", action="store_true", help="Always ask for API address and API Key.")
+    parser.add_argument("--non-interactive", action="store_true", help="Never prompt; require args, env, or saved config.")
+    parser.add_argument("--dry-run", action="store_true", help="Run checks without copying files or saving config.")
+    parser.add_argument("--python-executable", help="Python executable used by the installed skill launcher.")
+    parser.add_argument("--python-framework-path", help="macOS DYLD framework path for the managed Python runtime.")
+    parser.add_argument("--python-library-path", help="macOS DYLD library path for the managed Python runtime.")
+    parser.add_argument("--ssl-cert-file", help="CA certificate bundle for the managed Python runtime.")
     args = parser.parse_args()
 
+    if args.interactive and args.non_interactive:
+        parser.error("--interactive and --non-interactive cannot be used together.")
+
     skills_root = _skills_dir(args)
+    config_path = _config_file(args)
+    existing_config = _read_config(config_path)
+    api_url, api_key = _resolve_configuration(args, existing_config)
+    runtime_config = _resolve_runtime_configuration(args)
+
     official, target, other = _scan_image_skills(skills_root)
     _print_skill_scan(skills_root, official, target, other)
-    _confirm_continue(args, other)
-    _require_api_key()
     _install_skill(skills_root, args.dry_run)
+    _write_config(config_path, api_url, api_key, runtime_config, args.dry_run)
+
+    if args.dry_run:
+        print("Dry run completed successfully.")
+    else:
+        print("Installation completed.")
+        print(f"Configured API address: {api_url}")
+        print(f"Configured model: {MODEL_ID}")
+        print(f"Configured Python runtime: {runtime_config['python_executable']}")
+        print("API Key saved without being displayed.")
+        print("Next step: restart Codex or open a new Codex task, then request image generation.")
     return 0
 
 

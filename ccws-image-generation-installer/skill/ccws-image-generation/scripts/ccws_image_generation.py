@@ -22,44 +22,27 @@ import uuid
 from models import DEFAULT_MODEL, get_model_spec, supported_model_ids
 
 
-DEFAULT_BASE_URL = "https://www.ccws.pro/"
 DEFAULT_API_PREFIX = "/v1"
+API_URL_EXAMPLE = "https://api.example.com/v1"
 DEFAULT_OUTPUT_PATH = "output/ccws-image-generation/output.png"
 DEFAULT_TIMEOUT = 300
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 VERSION_FILE = SKILL_ROOT / "VERSION"
 
+API_URL_ENV = "CCWS_IMAGE_API_URL"
 API_KEY_ENV = "CCWS_IMAGE_API_KEY"
-KEY_FIELDS = (API_KEY_ENV,)
+CONFIG_ENV = "CCWS_IMAGE_CONFIG"
+KEY_FIELDS = (API_KEY_ENV, "api_key")
 SUPPORT_GROUP_NOTE = "请在售后群咨询。"
 
-MISSING_API_KEY_MESSAGE = """在安装/使用本技能之前，请登录 CCWSPro 控制台，创建一个包含model：gpt-image-2的令牌，并将该令牌添加到环境变量中：CCWS_IMAGE_API_KEY。
+MISSING_API_KEY_MESSAGE = """没有找到 CCWS Image Generation API Key。
 
-临时设置方法：
-- macOS / Linux:
-  export CCWS_IMAGE_API_KEY="你的 CCWSPro 令牌"
-- Windows PowerShell:
-  $env:CCWS_IMAGE_API_KEY="你的 CCWSPro 令牌"
-- Windows CMD:
-  set CCWS_IMAGE_API_KEY=你的 CCWSPro 令牌
+请重新运行一键安装器，并输入：
+1. API 地址，例如 https://www.ccws.pro（缺少 /v1 时会自动补充）
+2. 支持 model: gpt-image-2 的 API Key
 
-永久设置方法：
-- macOS / Linux zsh:
-  echo 'export CCWS_IMAGE_API_KEY="你的 CCWSPro 令牌"' >> ~/.zshrc
-  source ~/.zshrc
-- macOS / Linux bash:
-  echo 'export CCWS_IMAGE_API_KEY="你的 CCWSPro 令牌"' >> ~/.bashrc
-  source ~/.bashrc
-- Windows PowerShell:
-  [Environment]::SetEnvironmentVariable("CCWS_IMAGE_API_KEY", "你的 CCWSPro 令牌", "User")
-
-验证：
-- macOS / Linux:
-  echo "$CCWS_IMAGE_API_KEY"
-- Windows PowerShell:
-  echo $env:CCWS_IMAGE_API_KEY
-
-请不要把令牌直接发到聊天里。"""
+也可以通过 CCWS_IMAGE_API_KEY 环境变量临时覆盖安装器保存的配置。
+请不要把 API Key 直接发到聊天里。"""
 
 
 def _die(message: str, code: int = 1, *, include_version: bool = True) -> None:
@@ -74,6 +57,118 @@ def _read_version() -> str:
         return VERSION_FILE.read_text(encoding="utf-8").strip()
     except OSError:
         return "unknown"
+
+
+def _default_config_file() -> Path:
+    override = os.environ.get(CONFIG_ENV, "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+
+    if sys.platform == "win32":
+        app_data = os.environ.get("APPDATA", "").strip()
+        root = Path(app_data) if app_data else Path.home() / "AppData" / "Roaming"
+        return (root / "CCWS" / "image-generation.json").resolve()
+
+    if sys.platform == "darwin":
+        return (Path.home() / "Library" / "Application Support" / "CCWS" / "image-generation.json").resolve()
+
+    xdg_config = os.environ.get("XDG_CONFIG_HOME", "").strip()
+    root = Path(xdg_config).expanduser() if xdg_config else Path.home() / ".config"
+    return (root / "ccws" / "image-generation.json").resolve()
+
+
+def _config_file(args: Optional[argparse.Namespace] = None) -> Path:
+    override = getattr(args, "config_file", None) if args is not None else None
+    if override:
+        return Path(override).expanduser().resolve()
+    return _default_config_file()
+
+
+def _read_config(args: Optional[argparse.Namespace] = None) -> Dict[str, Any]:
+    path = _config_file(args)
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        _die(f"Could not read configuration file {path}: {exc}")
+    if not isinstance(data, dict):
+        _die(f"Configuration file must contain a JSON object: {path}")
+    return data
+
+
+def _normalize_api_url(raw: str) -> str:
+    value = raw.strip()
+    if not value:
+        _die("API address cannot be empty.")
+    if "://" not in value:
+        value = f"https://{value}"
+
+    parsed = urllib.parse.urlsplit(value)
+    if parsed.scheme not in {"http", "https"}:
+        _die("API address must use http:// or https://.")
+    if not parsed.hostname:
+        _die("API address must include a host name.")
+    if parsed.username or parsed.password:
+        _die("API address must not contain embedded credentials.")
+    if parsed.query or parsed.fragment:
+        _die("API address must not contain a query string or fragment.")
+
+    path = parsed.path.rstrip("/")
+    for endpoint in ("/images/generations", "/images/edits"):
+        if path.lower().endswith(endpoint):
+            path = path[: -len(endpoint)].rstrip("/")
+            break
+
+    if path.lower().endswith("/v1"):
+        path = f"{path[:-3]}/v1"
+    else:
+        path = f"{path}/v1" if path else "/v1"
+    return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, path, "", "")).rstrip("/")
+
+
+def _legacy_api_url(base_url: str, api_prefix: str) -> str:
+    base = base_url.rstrip("/")
+    prefix = api_prefix.strip()
+    if not prefix or prefix == "/":
+        return base
+    return f"{base}/{prefix.strip('/')}"
+
+
+def _resolve_api_url(args: argparse.Namespace) -> str:
+    if args.api_url:
+        return _normalize_api_url(args.api_url)
+
+    if args.base_url is not None or args.api_prefix is not None:
+        if not args.base_url:
+            _die("--base-url is required when using legacy --base-url/--api-prefix overrides.")
+        base_url = args.base_url
+        api_prefix = args.api_prefix if args.api_prefix is not None else DEFAULT_API_PREFIX
+        return _normalize_api_url(_legacy_api_url(base_url, api_prefix))
+
+    direct_env = os.environ.get(API_URL_ENV, "").strip()
+    if direct_env:
+        return _normalize_api_url(direct_env)
+
+    legacy_base = os.environ.get("CCWS_IMAGE_BASE_URL")
+    legacy_prefix = os.environ.get("CCWS_IMAGE_API_PREFIX")
+    if legacy_base is not None or legacy_prefix is not None:
+        if not legacy_base:
+            _die("CCWS_IMAGE_BASE_URL is required when using legacy API environment overrides.")
+        return _normalize_api_url(
+            _legacy_api_url(
+                legacy_base,
+                legacy_prefix if legacy_prefix is not None else DEFAULT_API_PREFIX,
+            )
+        )
+
+    configured = _read_config(args).get("api_url")
+    if isinstance(configured, str) and configured.strip():
+        return _normalize_api_url(configured)
+    _die(
+        "Missing API address. Rerun the one-click installer, pass --api-url, "
+        f"or set {API_URL_ENV}. Example: {API_URL_EXAMPLE}"
+    )
 
 
 def _die_request_failure(
@@ -168,26 +263,28 @@ def _extract_request_id_from_text(value: str) -> Optional[str]:
     return None
 
 
-def _get_api_key() -> Optional[str]:
+def _get_api_key(args: argparse.Namespace) -> Optional[str]:
     raw = os.environ.get(API_KEY_ENV)
-    return raw.strip() if raw and raw.strip() else None
+    if raw and raw.strip():
+        return raw.strip()
+    configured = _read_config(args).get("api_key")
+    if isinstance(configured, str) and configured.strip():
+        return configured.strip()
+    return None
 
 
-def _require_api_key() -> str:
-    api_key = _get_api_key()
+def _require_api_key(args: argparse.Namespace) -> str:
+    api_key = _get_api_key(args)
     if api_key:
         return api_key
     print(MISSING_API_KEY_MESSAGE, file=sys.stderr)
-    _die("Missing required environment variable: CCWS_IMAGE_API_KEY.")
+    _die(f"Missing API Key in environment or configuration file: {_config_file(args)}")
 
 
-def _build_url(base_url: str, api_prefix: str, endpoint: str) -> str:
-    base = base_url.rstrip("/")
-    prefix = api_prefix.strip()
+def _build_url(api_url: str, endpoint: str) -> str:
+    base = api_url.rstrip("/")
     endpoint = endpoint.strip("/")
-    if not prefix or prefix == "/":
-        return f"{base}/{endpoint}"
-    return f"{base}/{prefix.strip('/')}/{endpoint}"
+    return f"{base}/{endpoint}"
 
 
 def _json_load_object(raw: Optional[str], label: str) -> Dict[str, Any]:
@@ -537,9 +634,9 @@ def _do_generate(args: argparse.Namespace) -> None:
     except ValueError as exc:
         _die(str(exc))
 
-    url = _build_url(args.base_url, args.api_prefix, "images/generations")
+    url = _build_url(_resolve_api_url(args), "images/generations")
     outputs = _build_output_paths(args.out, args.out_dir, output_format, spec.output_count(args))
-    api_key = _require_api_key()
+    api_key = _require_api_key(args)
 
     if args.dry_run:
         _print_dry_run({"method": "POST", "url": url, "payload": payload, "outputs": [str(p) for p in outputs]})
@@ -567,10 +664,10 @@ def _do_edit(args: argparse.Namespace) -> None:
     if args.mask:
         files.append(("mask", _check_paths([args.mask], "Mask")[0]))
 
-    url = _build_url(args.base_url, args.api_prefix, "images/edits")
+    url = _build_url(_resolve_api_url(args), "images/edits")
     outputs = _build_output_paths(args.out, args.out_dir, output_format, spec.output_count(args))
     fields = _payload_to_form_fields(payload)
-    api_key = _require_api_key()
+    api_key = _require_api_key(args)
 
     if args.dry_run:
         _print_dry_run(
@@ -592,8 +689,13 @@ def _do_edit(args: argparse.Namespace) -> None:
 
 
 def _add_common_request_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--base-url", default=os.environ.get("CCWS_IMAGE_BASE_URL", DEFAULT_BASE_URL))
-    parser.add_argument("--api-prefix", default=os.environ.get("CCWS_IMAGE_API_PREFIX", DEFAULT_API_PREFIX))
+    parser.add_argument(
+        "--api-url",
+        help="API address; /v1 is appended automatically when missing. Default comes only from installer config.",
+    )
+    parser.add_argument("--config-file", help=f"Override the saved configuration file or set {CONFIG_ENV}.")
+    parser.add_argument("--base-url", help="Legacy override for the API host/root URL.")
+    parser.add_argument("--api-prefix", help="Legacy override for the API prefix, for example /v1 or an empty string.")
     parser.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--force", action="store_true")

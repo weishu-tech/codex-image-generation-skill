@@ -1,77 +1,91 @@
 # CCWS Image Generation Skill Installer
 
-This package installs the `ccws-image-generation` Codex skill. It makes CCWS Image Generation the AI image generation/editing path for Codex.
+This package installs and configures the `ccws-image-generation` Codex skill on macOS and Windows. Never ask the user to paste an API Key into chat.
 
-Give this whole folder or the zip file to an AI assistant and ask it to run the installer. Do not paste API keys into chat.
+## Preferred install flow
 
-## Install Flow
+- macOS: ask the user to double-click `install-macos.command`.
+- Windows: ask the user to double-click `install-windows.bat`.
 
-1. Check local image generation skills.
-   - The official skill is usually `~/.codex/skills/.system/imagegen`.
-   - If other non-official image generation skills are found, recommend that the user uninstall or move them first to avoid trigger conflicts.
-   - The user may ignore this warning and continue.
-2. Require `CCWS_IMAGE_API_KEY`.
-   - The user must create a CCWSPro image generation group API key in the CCWSPro console.
-   - The token must include access to `model: gpt-image-2`.
-   - The installer must stop if `CCWS_IMAGE_API_KEY` is not visible in the current environment.
-3. Install the bundled skill to `$CODEX_HOME/skills/ccws-image-generation` or `~/.codex/skills/ccws-image-generation`.
-4. Tell the user to open a new Codex conversation or restart Codex before trying image generation again.
+The installer itself asks for exactly two configuration values:
 
-## One Command
+1. The required API address, for example `https://www.ccws.pro`. There is no built-in default.
+2. An API Key that supports `model: gpt-image-2`.
 
-Run from this package directory:
+The installer appends `/v1` when the normalized address does not already end with that exact path segment. The API Key prompt is hidden. Potentially conflicting image skills are reported without adding another confirmation question and are never modified.
+
+No preinstalled Python is required. Before showing those two prompts, the launcher automatically installs official CPython `3.12.10` under the current user's CCWS application-data directory. It does not request administrator privileges, change PATH, or replace a system Python.
+
+Download order is Tsinghua TUNA, Huawei Cloud, npmmirror, then python.org. Every artifact is checked against the pinned SHA256 in `python-runtime.json`; the macOS package signature is also verified before extraction.
+
+## Preferred uninstall flow
+
+- macOS: ask the user to double-click `uninstall-macos.command`.
+- Windows: ask the user to double-click `uninstall-windows.bat`.
+
+The uninstaller displays every existing target and asks for one confirmation, defaulting to cancel. It never asks for the API address or API Key. Once confirmed, it removes active `ccws-image-generation` skill directories, the saved configuration/API Key, and the CCWS-managed Python `3.12.10` runtime.
+
+It does not modify system Python, PATH, unrelated skills, other CCWS files, or historical `skill-backups`. For isolated automation only, both platform uninstallers accept `--yes`; set `HOME`/`USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, `CODEX_HOME`, `CCWS_IMAGE_CONFIG`, and `CCWS_PYTHON_RUNTIME_ROOT` to temporary targets as applicable. A custom Python runtime is removed only when its CCWS managed-runtime marker is present.
+
+## AI-assisted command
+
+If an AI assistant is guiding installation, prefer the double-click flow so the user enters the secret directly. Equivalent interactive commands are:
 
 ```bash
-python3 install.py --yes
+./install-macos.command
 ```
 
 Windows PowerShell:
 
 ```powershell
-py -3 .\install.py --yes
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\install-windows.ps1
 ```
 
-Use `--yes` to continue even if non-official image generation skills are detected. Without `--yes`, the installer asks before continuing when conflicts are found.
+Do not request, print, echo, inspect, or repeat the user's API Key.
 
-## API Key Setup
-
-Temporary setup:
+For isolated automated tests with an existing Python 3 only, `install.py` remains callable directly:
 
 ```bash
-# macOS / Linux
-export CCWS_IMAGE_API_KEY="your-ccws-token"
-
-# Windows PowerShell
-$env:CCWS_IMAGE_API_KEY="your-ccws-token"
-
-# Windows CMD
-set CCWS_IMAGE_API_KEY=your-ccws-token
+python3 install.py --yes --non-interactive \
+  --api-url "https://www.ccws.pro" \
+  --api-key "test-only-value"
 ```
 
-Persistent setup:
+Command-line API keys can be visible in process listings, so this path is not the normal user installation flow.
 
-```bash
-# macOS / Linux zsh
-echo 'export CCWS_IMAGE_API_KEY="your-ccws-token"' >> ~/.zshrc
-source ~/.zshrc
+Bootstrap tests can set `CCWS_PYTHON_DOWNLOAD_URL` to a verified local artifact or alternate URL and `CCWS_PYTHON_RUNTIME_ROOT` to an isolated target. These variables do not add interactive questions.
 
-# macOS / Linux bash
-echo 'export CCWS_IMAGE_API_KEY="your-ccws-token"' >> ~/.bashrc
-source ~/.bashrc
+## Install and configuration locations
+
+Fresh user installs go to `~/.agents/skills/ccws-image-generation`. If the same skill already exists under `~/.codex/skills`, the installer upgrades it there. `CODEX_HOME` and `--skills-dir` remain supported.
+
+Saved configuration:
+
+```text
+macOS:  ~/Library/Application Support/CCWS/image-generation.json
+Windows: %APPDATA%\CCWS\image-generation.json
 ```
 
-Windows PowerShell persistent setup:
+Managed Python runtime:
 
-```powershell
-[Environment]::SetEnvironmentVariable("CCWS_IMAGE_API_KEY", "your-ccws-token", "User")
+```text
+macOS:  ~/Library/Application Support/CCWS/Python/3.12.10
+Windows: %LOCALAPPDATA%\CCWS\Python\3.12.10
 ```
 
-After persistent Windows setup, restart the terminal or Codex so the new environment variable is loaded.
+`CCWS_IMAGE_API_URL`, `CCWS_IMAGE_API_KEY`, and `CCWS_IMAGE_CONFIG` can override the saved configuration at runtime.
 
 ## Package Contents
 
 ```text
 install.py
+install-macos.command
+install-windows.bat
+install-windows.ps1
+uninstall-macos.command
+uninstall-windows.bat
+uninstall-windows.ps1
+python-runtime.json
 AI_INSTALL.md
 skill/
   ccws-image-generation/
@@ -80,6 +94,8 @@ skill/
     agents/openai.yaml
     references/api.md
     scripts/ccws_image_generation.py
+    scripts/run-ccws-image-generation.command
+    scripts/run-ccws-image-generation.ps1
     scripts/models/__init__.py
     scripts/models/gpt_image_2.py
 ```
@@ -88,5 +104,5 @@ skill/
 
 - Never print or repeat the user's API key.
 - Do not use `OPENAI_API_KEY` or `~/.codex/auth.json`.
-- Do not continue to the install step if `CCWS_IMAGE_API_KEY` is missing from the current environment.
-- If installation succeeds, tell the user to open a new Codex conversation or restart Codex.
+- Let the user type the API Key into the installer's hidden terminal prompt.
+- If installation succeeds, tell the user to open a new Codex task or restart Codex.
