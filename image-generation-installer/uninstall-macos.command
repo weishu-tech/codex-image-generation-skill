@@ -5,8 +5,9 @@ umask 077
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(/usr/bin/dirname -- "$0")" && pwd)"
 MANIFEST="$SCRIPT_DIR/python-runtime.json"
-SKILL_NAME="ccws-image-generation"
-RUNTIME_MARKER_NAME=".ccws-managed-python-runtime"
+SKILL_NAME="custom-image-generation"
+LEGACY_SKILL_NAME="ccws-image-generation"
+RUNTIME_MARKER_NAME=".codex-image-generation-managed-python-runtime"
 ASSUME_YES=0
 REFUSED_TARGETS=0
 typeset -a TARGET_KINDS
@@ -36,7 +37,7 @@ add_existing_target() {
   TARGET_PATHS+=("$path")
 }
 
-config_is_ccws() {
+config_is_image_generation() {
   local path="$1"
   local model=""
 
@@ -48,7 +49,7 @@ config_is_ccws() {
 runtime_has_marker() {
   local runtime_root="$1"
   local marker="$runtime_root/$RUNTIME_MARKER_NAME"
-  local expected="ccws-image-generation:$PYTHON_VERSION"
+  local expected="custom-image-generation:$PYTHON_VERSION"
   local actual=""
 
   [[ -f "$marker" ]] || return 1
@@ -74,7 +75,7 @@ remove_target() {
     "配置")
       /bin/rm -f -- "$path"
       ;;
-    "Skill"|"Python")
+    "Skill"|"旧版 Skill"|"Python")
       /bin/rm -rf -- "$path"
       ;;
     *)
@@ -124,16 +125,19 @@ main() {
 
   add_existing_target "Skill" "$HOME_PATH/.agents/skills/$SKILL_NAME" || return 1
   add_existing_target "Skill" "$HOME_PATH/.codex/skills/$SKILL_NAME" || return 1
+  add_existing_target "旧版 Skill" "$HOME_PATH/.agents/skills/$LEGACY_SKILL_NAME" || return 1
+  add_existing_target "旧版 Skill" "$HOME_PATH/.codex/skills/$LEGACY_SKILL_NAME" || return 1
   CODEX_HOME_PATH=""
   if [[ -n "${CODEX_HOME:-}" ]]; then
     CODEX_HOME_PATH="$(normalize_path "$CODEX_HOME")" || return 1
     add_existing_target "Skill" "$CODEX_HOME_PATH/skills/$SKILL_NAME" || return 1
+    add_existing_target "旧版 Skill" "$CODEX_HOME_PATH/skills/$LEGACY_SKILL_NAME" || return 1
   fi
 
-  default_config="$(normalize_path "$HOME_PATH/Library/Application Support/CCWS/image-generation.json")" || return 1
-  config_path="$(normalize_path "${CCWS_IMAGE_CONFIG:-$default_config}")" || return 1
+  default_config="$(normalize_path "$HOME_PATH/Library/Application Support/Codex Image Generation/image-generation.json")" || return 1
+  config_path="$(normalize_path "${IMAGE_GENERATION_CONFIG:-$default_config}")" || return 1
   if path_exists "$config_path"; then
-    if [[ "$config_path" == "$default_config" ]] || config_is_ccws "$config_path"; then
+    if [[ "$config_path" == "$default_config" ]] || config_is_image_generation "$config_path"; then
       add_existing_target "配置" "$config_path" || return 1
     else
       echo "为避免误删，未识别的自定义配置文件不会删除：$config_path"
@@ -141,13 +145,13 @@ main() {
     fi
   fi
 
-  default_runtime="$(normalize_path "$HOME_PATH/Library/Application Support/CCWS/Python/$PYTHON_VERSION")" || return 1
-  runtime_path="$(normalize_path "${CCWS_PYTHON_RUNTIME_ROOT:-$default_runtime}")" || return 1
+  default_runtime="$(normalize_path "$HOME_PATH/Library/Application Support/Codex Image Generation/Python/$PYTHON_VERSION")" || return 1
+  runtime_path="$(normalize_path "${IMAGE_GENERATION_PYTHON_RUNTIME_ROOT:-$default_runtime}")" || return 1
   if path_exists "$runtime_path"; then
     if [[ "$runtime_path" == "$default_runtime" ]] || runtime_has_marker "$runtime_path"; then
       add_existing_target "Python" "$runtime_path" || return 1
     else
-      echo "为避免误删，没有 CCWS 安全标记的自定义 Python 目录不会删除：$runtime_path"
+      echo "为避免误删，没有生图 Skill 安全标记的自定义 Python 目录不会删除：$runtime_path"
       REFUSED_TARGETS=1
     fi
   fi
@@ -157,12 +161,12 @@ main() {
       echo "未删除任何内容。请检查上面的安全提示。"
       return 1
     fi
-    echo "未检测到需要卸载的 CCWS Image Generation 当前安装。"
+    echo "未检测到需要卸载的 Custom Image Generation 当前安装。"
     show_preserved_backups
     return 0
   fi
 
-  echo "CCWS Image Generation 卸载器"
+  echo "Custom Image Generation 卸载器"
   echo
   echo "将删除以下当前安装内容："
   for ((index = 1; index <= ${#TARGET_PATHS[@]}; index++)); do
@@ -194,8 +198,8 @@ main() {
     fi
   done
 
-  /bin/rmdir -- "$HOME_PATH/Library/Application Support/CCWS/Python" 2>/dev/null || true
-  /bin/rmdir -- "$HOME_PATH/Library/Application Support/CCWS" 2>/dev/null || true
+  /bin/rmdir -- "$HOME_PATH/Library/Application Support/Codex Image Generation/Python" 2>/dev/null || true
+  /bin/rmdir -- "$HOME_PATH/Library/Application Support/Codex Image Generation" 2>/dev/null || true
 
   if (( REFUSED_TARGETS )); then
     failure=1

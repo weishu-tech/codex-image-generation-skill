@@ -5,7 +5,7 @@ Set-Location -LiteralPath $PSScriptRoot
 $manifestPath = Join-Path $PSScriptRoot "python-runtime.json"
 $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $pythonVersion = [string]$manifest.version
-$runtimeMarkerName = ".ccws-managed-python-runtime"
+$runtimeMarkerName = ".codex-image-generation-managed-python-runtime"
 
 $architecture = [string]$env:PROCESSOR_ARCHITECTURE
 if ($env:PROCESSOR_ARCHITEW6432) {
@@ -26,10 +26,10 @@ $localAppData = if ($env:LOCALAPPDATA) {
 } else {
     Join-Path $HOME "AppData\Local"
 }
-$pythonRuntimeRoot = if ($env:CCWS_PYTHON_RUNTIME_ROOT) {
-    [string]$env:CCWS_PYTHON_RUNTIME_ROOT
+$pythonRuntimeRoot = if ($env:IMAGE_GENERATION_PYTHON_RUNTIME_ROOT) {
+    [string]$env:IMAGE_GENERATION_PYTHON_RUNTIME_ROOT
 } else {
-    Join-Path $localAppData "CCWS\Python\$pythonVersion"
+    Join-Path $localAppData "Codex Image Generation\Python\$pythonVersion"
 }
 $pythonExecutable = Join-Path $pythonRuntimeRoot $pythonRelativePath
 
@@ -59,7 +59,7 @@ function Write-RuntimeMarker {
     )
 
     $markerPath = Join-Path $RuntimeRoot $runtimeMarkerName
-    Set-Content -LiteralPath $markerPath -Value "ccws-image-generation:$pythonVersion" -Encoding UTF8
+    Set-Content -LiteralPath $markerPath -Value "custom-image-generation:$pythonVersion" -Encoding UTF8
 }
 
 function Get-PythonArchive {
@@ -69,8 +69,8 @@ function Get-PythonArchive {
     )
 
     $candidates = @()
-    if ($env:CCWS_PYTHON_DOWNLOAD_URL) {
-        $candidates += [string]$env:CCWS_PYTHON_DOWNLOAD_URL
+    if ($env:IMAGE_GENERATION_PYTHON_DOWNLOAD_URL) {
+        $candidates += [string]$env:IMAGE_GENERATION_PYTHON_DOWNLOAD_URL
     } else {
         foreach ($templateValue in $manifest.download_url_templates) {
             $candidate = ([string]$templateValue).Replace("{version}", $pythonVersion).Replace("{filename}", $pythonFilename)
@@ -114,14 +114,14 @@ function Get-PythonArchive {
 function Install-ManagedPython {
     if (Test-ManagedPython -Executable $pythonExecutable) {
         Write-RuntimeMarker -RuntimeRoot $pythonRuntimeRoot
-        Write-Host "已检测到 CCWS 托管 Python ${pythonVersion}：$pythonRuntimeRoot"
+        Write-Host "已检测到生图 Skill 托管 Python ${pythonVersion}：$pythonRuntimeRoot"
         return
     }
 
     $runtimeParent = Split-Path -Parent $pythonRuntimeRoot
     New-Item -ItemType Directory -Path $runtimeParent -Force | Out-Null
 
-    $temporaryRoot = Join-Path ([IO.Path]::GetTempPath()) ("ccws-python-" + [Guid]::NewGuid().ToString("N"))
+    $temporaryRoot = Join-Path ([IO.Path]::GetTempPath()) ("image-generation-python-" + [Guid]::NewGuid().ToString("N"))
     $stagingRoot = "${pythonRuntimeRoot}.staging-$PID-$([Guid]::NewGuid().ToString('N'))"
     $backupPath = $null
     New-Item -ItemType Directory -Path $temporaryRoot -Force | Out-Null
@@ -178,7 +178,7 @@ try {
     $installerExitCode = $LASTEXITCODE
 
     if ($installerExitCode -eq 0) {
-        Write-Host "`nCCWS Image Generation 安装完成，可以关闭此窗口。" -ForegroundColor Green
+        Write-Host "`nCustom Image Generation 安装完成，可以关闭此窗口。" -ForegroundColor Green
     } else {
         Write-Host "`n安装失败，请保留上面的错误信息。" -ForegroundColor Red
     }

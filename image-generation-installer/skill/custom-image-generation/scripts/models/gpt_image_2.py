@@ -1,4 +1,4 @@
-"""gpt-image-2 parameter definitions for CCWS Image Generation."""
+"""gpt-image-2 parameter definitions for Custom Image Generation."""
 
 from __future__ import annotations
 

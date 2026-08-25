@@ -1,0 +1,4 @@
+interface:
+  display_name: "Custom Image Generation"
+  short_description: "Custom-provider AI image workflow"
+  default_prompt: "Use $custom-image-generation to generate an enchanted forest scene through the configured image API."

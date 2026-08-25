@@ -2,16 +2,16 @@
 Set-StrictMode -Version 2.0
 
 $scriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
-$cliPath = Join-Path $scriptDirectory "ccws_image_generation.py"
+$cliPath = Join-Path $scriptDirectory "image_generation.py"
 $appData = if ($env:APPDATA) {
     [string]$env:APPDATA
 } else {
     Join-Path $HOME "AppData\Roaming"
 }
-$configPath = if ($env:CCWS_IMAGE_CONFIG) {
-    [string]$env:CCWS_IMAGE_CONFIG
+$configPath = if ($env:IMAGE_GENERATION_CONFIG) {
+    [string]$env:IMAGE_GENERATION_CONFIG
 } else {
-    Join-Path $appData "CCWS\image-generation.json"
+    Join-Path $appData "Codex Image Generation\image-generation.json"
 }
 
 $pythonExecutable = $null
@@ -22,7 +22,7 @@ if (Test-Path -LiteralPath $configPath -PathType Leaf) {
             $pythonExecutable = [string]$config.python_executable
         }
     } catch {
-        Write-Warning "无法读取 CCWS 配置中的 Python 运行时信息，将尝试系统 Python 3。"
+        Write-Warning "无法读取生图 Skill 配置中的 Python 运行时信息，将尝试系统 Python 3。"
     }
 }
 
@@ -49,5 +49,5 @@ if ($pythonCommand) {
     }
 }
 
-Write-Error "未找到可用的 Python 3。请重新运行 CCWS Image Generation 一键安装器。"
+Write-Error "未找到可用的 Python 3。请重新运行 Custom Image Generation 一键安装器。"
 exit 1

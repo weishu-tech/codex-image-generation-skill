@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cross-platform CCWS Image Generation CLI."""
+"""Cross-platform Custom Image Generation CLI."""
 
 from __future__ import annotations
 
@@ -24,30 +24,30 @@ from models import DEFAULT_MODEL, get_model_spec, supported_model_ids
 
 DEFAULT_API_PREFIX = "/v1"
 API_URL_EXAMPLE = "https://api.example.com/v1"
-DEFAULT_OUTPUT_PATH = "output/ccws-image-generation/output.png"
+DEFAULT_OUTPUT_PATH = "output/custom-image-generation/output.png"
 DEFAULT_TIMEOUT = 300
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 VERSION_FILE = SKILL_ROOT / "VERSION"
 
-API_URL_ENV = "CCWS_IMAGE_API_URL"
-API_KEY_ENV = "CCWS_IMAGE_API_KEY"
-CONFIG_ENV = "CCWS_IMAGE_CONFIG"
+API_URL_ENV = "IMAGE_GENERATION_API_URL"
+API_KEY_ENV = "IMAGE_GENERATION_API_KEY"
+CONFIG_ENV = "IMAGE_GENERATION_CONFIG"
 KEY_FIELDS = (API_KEY_ENV, "api_key")
 SUPPORT_GROUP_NOTE = "请在售后群咨询。"
 
-MISSING_API_KEY_MESSAGE = """没有找到 CCWS Image Generation API Key。
+MISSING_API_KEY_MESSAGE = """没有找到 Custom Image Generation API Key。
 
 请重新运行一键安装器，并输入：
-1. API 地址，例如 https://www.ccws.pro（缺少 /v1 时会自动补充）
+1. API 地址，例如 https://api.example.com（缺少 /v1 时会自动补充）
 2. 支持 model: gpt-image-2 的 API Key
 
-也可以通过 CCWS_IMAGE_API_KEY 环境变量临时覆盖安装器保存的配置。
+也可以通过 IMAGE_GENERATION_API_KEY 环境变量临时覆盖安装器保存的配置。
 请不要把 API Key 直接发到聊天里。"""
 
 
 def _die(message: str, code: int = 1, *, include_version: bool = True) -> None:
     if include_version and "Version:" not in message:
-        message = f"{message}\nVersion: ccws-image-generation {_read_version()}"
+        message = f"{message}\nVersion: custom-image-generation {_read_version()}"
     print(f"Error: {message}", file=sys.stderr)
     raise SystemExit(code)
 
@@ -67,14 +67,14 @@ def _default_config_file() -> Path:
     if sys.platform == "win32":
         app_data = os.environ.get("APPDATA", "").strip()
         root = Path(app_data) if app_data else Path.home() / "AppData" / "Roaming"
-        return (root / "CCWS" / "image-generation.json").resolve()
+        return (root / "Codex Image Generation" / "image-generation.json").resolve()
 
     if sys.platform == "darwin":
-        return (Path.home() / "Library" / "Application Support" / "CCWS" / "image-generation.json").resolve()
+        return (Path.home() / "Library" / "Application Support" / "Codex Image Generation" / "image-generation.json").resolve()
 
     xdg_config = os.environ.get("XDG_CONFIG_HOME", "").strip()
     root = Path(xdg_config).expanduser() if xdg_config else Path.home() / ".config"
-    return (root / "ccws" / "image-generation.json").resolve()
+    return (root / "codex-image-generation" / "image-generation.json").resolve()
 
 
 def _config_file(args: Optional[argparse.Namespace] = None) -> Path:
@@ -150,11 +150,11 @@ def _resolve_api_url(args: argparse.Namespace) -> str:
     if direct_env:
         return _normalize_api_url(direct_env)
 
-    legacy_base = os.environ.get("CCWS_IMAGE_BASE_URL")
-    legacy_prefix = os.environ.get("CCWS_IMAGE_API_PREFIX")
+    legacy_base = os.environ.get("IMAGE_GENERATION_BASE_URL")
+    legacy_prefix = os.environ.get("IMAGE_GENERATION_API_PREFIX")
     if legacy_base is not None or legacy_prefix is not None:
         if not legacy_base:
-            _die("CCWS_IMAGE_BASE_URL is required when using legacy API environment overrides.")
+            _die("IMAGE_GENERATION_BASE_URL is required when using legacy API environment overrides.")
         return _normalize_api_url(
             _legacy_api_url(
                 legacy_base,
@@ -183,7 +183,7 @@ def _die_request_failure(
 ) -> None:
     details = [
         f"{operation} failed.",
-        f"Version: ccws-image-generation {_read_version()}",
+        f"Version: custom-image-generation {_read_version()}",
         f"Endpoint: {url}",
     ]
     if status is not None:
@@ -360,7 +360,7 @@ def _read_json_response(req: urllib.request.Request, timeout: int, *, operation:
             status=exc.code,
             reason=exc.reason,
             body=body,
-            message="CCWS returned an HTTP error.",
+            message="The configured image provider returned an HTTP error.",
         )
     except urllib.error.URLError as exc:
         _die_request_failure(
@@ -396,7 +396,7 @@ def _guess_mime(path: Path) -> str:
 
 
 def _multipart_body(fields: Sequence[Tuple[str, Any]], files: Sequence[Tuple[str, Path]]) -> Tuple[bytes, str]:
-    boundary = f"----ccws-image-generation-{uuid.uuid4().hex}"
+    boundary = f"----custom-image-generation-{uuid.uuid4().hex}"
     chunks: List[bytes] = []
 
     def add(value: Union[str, bytes]) -> None:
@@ -642,7 +642,7 @@ def _do_generate(args: argparse.Namespace) -> None:
         _print_dry_run({"method": "POST", "url": url, "payload": payload, "outputs": [str(p) for p in outputs]})
         return
 
-    print(f"Calling CCWS Image Generation endpoint: {url}", file=sys.stderr)
+    print(f"Calling Custom Image Generation endpoint: {url}", file=sys.stderr)
     started = time.time()
     response = _request_json(url, payload, api_key, args.timeout)
     print(f"Generation completed in {time.time() - started:.1f}s.", file=sys.stderr)
@@ -681,7 +681,7 @@ def _do_edit(args: argparse.Namespace) -> None:
         )
         return
 
-    print(f"Calling CCWS Image Generation edit endpoint: {url}", file=sys.stderr)
+    print(f"Calling Custom Image Generation edit endpoint: {url}", file=sys.stderr)
     started = time.time()
     response = _request_multipart(url, fields, files, api_key, args.timeout)
     print(f"Edit completed in {time.time() - started:.1f}s.", file=sys.stderr)
@@ -702,7 +702,7 @@ def _add_common_request_args(parser: argparse.ArgumentParser) -> None:
 
 
 def _add_common_image_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--model", default=os.environ.get("CCWS_IMAGE_MODEL", DEFAULT_MODEL), choices=list(supported_model_ids()))
+    parser.add_argument("--model", default=os.environ.get("IMAGE_GENERATION_MODEL", DEFAULT_MODEL), choices=list(supported_model_ids()))
     parser.add_argument("--prompt")
     parser.add_argument("--prompt-file")
     parser.add_argument("--extra-json")
@@ -724,7 +724,7 @@ def _add_common_image_args(parser: argparse.ArgumentParser) -> None:
 
 
 def _detect_model(argv: Sequence[str]) -> str:
-    model = os.environ.get("CCWS_IMAGE_MODEL", DEFAULT_MODEL)
+    model = os.environ.get("IMAGE_GENERATION_MODEL", DEFAULT_MODEL)
     for index, item in enumerate(argv):
         if item == "--model" and index + 1 < len(argv):
             return argv[index + 1]
@@ -734,8 +734,8 @@ def _detect_model(argv: Sequence[str]) -> str:
 
 
 def build_parser(selected_model: Optional[str] = None) -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Generate or edit images through the CCWS Image Generation API.")
-    parser.add_argument("--version", action="version", version=f"ccws-image-generation {_read_version()}")
+    parser = argparse.ArgumentParser(description="Generate or edit images through the Custom Image Generation API.")
+    parser.add_argument("--version", action="version", version=f"custom-image-generation {_read_version()}")
     sub = parser.add_subparsers(dest="command", required=True)
 
     selected_spec = get_model_spec(selected_model or DEFAULT_MODEL)

@@ -1,4 +1,4 @@
-"""Model registry for CCWS Image Generation."""
+"""Model registry for Custom Image Generation."""
 
 from __future__ import annotations
 

@@ -15,14 +15,14 @@ from unittest import mock
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-PACKAGE_ROOT = REPO_ROOT / "ccws-image-generation-installer"
+PACKAGE_ROOT = REPO_ROOT / "image-generation-installer"
 INSTALLER = PACKAGE_ROOT / "install.py"
 PYTHON_RUNTIME_MANIFEST = PACKAGE_ROOT / "python-runtime.json"
 MACOS_INSTALLER = PACKAGE_ROOT / "install-macos.command"
 
 
 def _load_installer_module():
-    spec = importlib.util.spec_from_file_location("ccws_installer", INSTALLER)
+    spec = importlib.util.spec_from_file_location("image_installer", INSTALLER)
     if spec is None or spec.loader is None:
         raise RuntimeError("Could not load installer module")
     module = importlib.util.module_from_spec(spec)
@@ -121,9 +121,9 @@ class InstallerTests(unittest.TestCase):
             combined_output = result.stdout + result.stderr
             self.assertNotIn(api_key, combined_output)
 
-            installed_skill = skills_dir / "ccws-image-generation"
+            installed_skill = skills_dir / "custom-image-generation"
             self.assertTrue((installed_skill / "SKILL.md").is_file())
-            self.assertEqual((installed_skill / "VERSION").read_text(encoding="utf-8").strip(), "1.2.0")
+            self.assertEqual((installed_skill / "VERSION").read_text(encoding="utf-8").strip(), "2.0.0")
 
             config = json.loads(config_file.read_text(encoding="utf-8"))
             self.assertEqual(config["api_url"], "https://api.example.com/v1")
@@ -133,7 +133,7 @@ class InstallerTests(unittest.TestCase):
             if os.name != "nt":
                 self.assertEqual(stat.S_IMODE(config_file.stat().st_mode), 0o600)
 
-            cli = installed_skill / "scripts" / "ccws_image_generation.py"
+            cli = installed_skill / "scripts" / "image_generation.py"
             dry_run = subprocess.run(
                 [
                     sys.executable,
@@ -164,7 +164,7 @@ class InstallerTests(unittest.TestCase):
             env["HOME"] = str(root)
             env["USERPROFILE"] = str(root)
             env.pop("CODEX_HOME", None)
-            env.pop("CCWS_IMAGE_CONFIG", None)
+            env.pop("IMAGE_GENERATION_CONFIG", None)
 
             subprocess.run(
                 [
@@ -185,8 +185,8 @@ class InstallerTests(unittest.TestCase):
                 env=env,
             )
 
-            self.assertTrue((root / ".agents" / "skills" / "ccws-image-generation" / "SKILL.md").is_file())
-            self.assertFalse((root / ".codex" / "skills" / "ccws-image-generation").exists())
+            self.assertTrue((root / ".agents" / "skills" / "custom-image-generation" / "SKILL.md").is_file())
+            self.assertFalse((root / ".codex" / "skills" / "custom-image-generation").exists())
 
     def test_existing_legacy_install_is_upgraded_and_backed_up_outside_skills(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:
@@ -203,7 +203,7 @@ class InstallerTests(unittest.TestCase):
             env["HOME"] = str(root)
             env["USERPROFILE"] = str(root)
             env.pop("CODEX_HOME", None)
-            env.pop("CCWS_IMAGE_CONFIG", None)
+            env.pop("IMAGE_GENERATION_CONFIG", None)
 
             subprocess.run(
                 [
@@ -224,11 +224,51 @@ class InstallerTests(unittest.TestCase):
                 env=env,
             )
 
-            self.assertEqual((legacy_skill / "VERSION").read_text(encoding="utf-8").strip(), "1.2.0")
-            backups = list((root / ".codex" / "skill-backups").glob("ccws-image-generation.backup-*"))
+            installed_skill = root / ".codex" / "skills" / "custom-image-generation"
+            self.assertEqual((installed_skill / "VERSION").read_text(encoding="utf-8").strip(), "2.0.0")
+            self.assertFalse(legacy_skill.exists())
+            backups = list((root / ".codex" / "skill-backups").glob("custom-image-generation-legacy.backup-*"))
             self.assertEqual(len(backups), 1)
             self.assertEqual((backups[0] / "VERSION").read_text(encoding="utf-8").strip(), "0.0.1")
-            self.assertFalse(any((root / ".codex" / "skills").glob("ccws-image-generation.backup-*")))
+            self.assertFalse(any((root / ".codex" / "skills").glob("*.backup-*")))
+
+    @unittest.skipUnless(sys.platform == "darwin", "macOS legacy config migration test")
+    def test_legacy_config_values_are_migrated_without_printing_key(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            root = Path(temporary_dir)
+            legacy_config = root / "Library" / "Application Support" / "CCWS" / "image-generation.json"
+            new_config = root / "Library" / "Application Support" / "Codex Image Generation" / "image-generation.json"
+            api_key = "legacy-config-secret"
+            legacy_config.parent.mkdir(parents=True)
+            legacy_config.write_text(
+                json.dumps({"api_url": "https://legacy.example.com", "api_key": api_key, "model": "gpt-image-2"}),
+                encoding="utf-8",
+            )
+            env = os.environ.copy()
+            env["HOME"] = str(root)
+            env["USERPROFILE"] = str(root)
+            env.pop("CODEX_HOME", None)
+            env.pop("IMAGE_GENERATION_CONFIG", None)
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(INSTALLER),
+                    "--yes",
+                    "--non-interactive",
+                    "--python-executable",
+                    sys.executable,
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+
+            self.assertNotIn(api_key, result.stdout + result.stderr)
+            migrated = json.loads(new_config.read_text(encoding="utf-8"))
+            self.assertEqual(migrated["api_url"], "https://legacy.example.com/v1")
+            self.assertEqual(migrated["api_key"], api_key)
 
     def test_environment_overrides_saved_api_url_and_key(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:
@@ -244,10 +284,10 @@ class InstallerTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            cli = PACKAGE_ROOT / "skill" / "ccws-image-generation" / "scripts" / "ccws_image_generation.py"
+            cli = PACKAGE_ROOT / "skill" / "custom-image-generation" / "scripts" / "image_generation.py"
             env = os.environ.copy()
-            env["CCWS_IMAGE_API_URL"] = "https://override.example.com/openai"
-            env["CCWS_IMAGE_API_KEY"] = "override-secret-value"
+            env["IMAGE_GENERATION_API_URL"] = "https://override.example.com/openai"
+            env["IMAGE_GENERATION_API_KEY"] = "override-secret-value"
 
             result = subprocess.run(
                 [
@@ -281,7 +321,7 @@ class InstallerTests(unittest.TestCase):
                 json.dumps({"api_key": api_key, "model": "gpt-image-2"}),
                 encoding="utf-8",
             )
-            cli = PACKAGE_ROOT / "skill" / "ccws-image-generation" / "scripts" / "ccws_image_generation.py"
+            cli = PACKAGE_ROOT / "skill" / "custom-image-generation" / "scripts" / "image_generation.py"
 
             result = subprocess.run(
                 [
@@ -361,10 +401,10 @@ class InstallerTests(unittest.TestCase):
                 text=True,
             )
 
-            launcher = skills_dir / "ccws-image-generation" / "scripts" / "run-ccws-image-generation.command"
+            launcher = skills_dir / "custom-image-generation" / "scripts" / "run-image-generation.command"
             self.assertTrue(os.access(launcher, os.X_OK))
             env = os.environ.copy()
-            env["CCWS_IMAGE_CONFIG"] = str(config_file)
+            env["IMAGE_GENERATION_CONFIG"] = str(config_file)
             result = subprocess.run(
                 [
                     str(launcher),
@@ -391,8 +431,8 @@ class InstallerTests(unittest.TestCase):
             bad_archive = root / "bad-python.pkg"
             bad_archive.write_bytes(b"not a Python package")
             env = os.environ.copy()
-            env["CCWS_PYTHON_DOWNLOAD_URL"] = str(bad_archive)
-            env["CCWS_PYTHON_RUNTIME_ROOT"] = str(root / "runtime")
+            env["IMAGE_GENERATION_PYTHON_DOWNLOAD_URL"] = str(bad_archive)
+            env["IMAGE_GENERATION_PYTHON_RUNTIME_ROOT"] = str(root / "runtime")
 
             result = subprocess.run(
                 [
@@ -416,11 +456,11 @@ class InstallerTests(unittest.TestCase):
             self.assertFalse((root / "runtime").exists())
 
     @unittest.skipUnless(
-        sys.platform == "darwin" and bool(os.environ.get("CCWS_TEST_MACOS_PYTHON_PKG")),
-        "set CCWS_TEST_MACOS_PYTHON_PKG to run the full macOS Python bootstrap",
+        sys.platform == "darwin" and bool(os.environ.get("IMAGE_GENERATION_TEST_MACOS_PYTHON_PKG")),
+        "set IMAGE_GENERATION_TEST_MACOS_PYTHON_PKG to run the full macOS Python bootstrap",
     )
     def test_full_macos_python_bootstrap_and_skill_launcher(self) -> None:
-        python_package = Path(os.environ["CCWS_TEST_MACOS_PYTHON_PKG"]).resolve()
+        python_package = Path(os.environ["IMAGE_GENERATION_TEST_MACOS_PYTHON_PKG"]).resolve()
         self.assertTrue(python_package.is_file())
 
         with tempfile.TemporaryDirectory() as temporary_dir:
@@ -432,8 +472,8 @@ class InstallerTests(unittest.TestCase):
             env = os.environ.copy()
             env["HOME"] = str(root)
             env["USERPROFILE"] = str(root)
-            env["CCWS_PYTHON_DOWNLOAD_URL"] = str(python_package)
-            env["CCWS_PYTHON_RUNTIME_ROOT"] = str(runtime_root)
+            env["IMAGE_GENERATION_PYTHON_DOWNLOAD_URL"] = str(python_package)
+            env["IMAGE_GENERATION_PYTHON_RUNTIME_ROOT"] = str(runtime_root)
             env["PATH"] = ""
 
             result = subprocess.run(
@@ -462,13 +502,13 @@ class InstallerTests(unittest.TestCase):
             self.assertEqual(Path(config["python_executable"]), managed_python.resolve())
             self.assertEqual(Path(config["ssl_cert_file"]), (runtime_root / "cert.pem").resolve())
             self.assertEqual(
-                (runtime_root / ".ccws-managed-python-runtime").read_text(encoding="utf-8").strip(),
-                "ccws-image-generation:3.12.10",
+                (runtime_root / ".codex-image-generation-managed-python-runtime").read_text(encoding="utf-8").strip(),
+                "custom-image-generation:3.12.10",
             )
 
-            launcher = skills_dir / "ccws-image-generation" / "scripts" / "run-ccws-image-generation.command"
+            launcher = skills_dir / "custom-image-generation" / "scripts" / "run-image-generation.command"
             launcher_env = env.copy()
-            launcher_env["CCWS_IMAGE_CONFIG"] = str(config_file)
+            launcher_env["IMAGE_GENERATION_CONFIG"] = str(config_file)
             dry_run = subprocess.run(
                 [
                     str(launcher),

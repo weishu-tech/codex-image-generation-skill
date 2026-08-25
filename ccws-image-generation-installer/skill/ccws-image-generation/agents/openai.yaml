@@ -1,4 +1,0 @@
-interface:
-  display_name: "CCWS Image Generation"
-  short_description: "Default CCWS AI image workflow"
-  default_prompt: "Use $ccws-image-generation to generate an enchanted forest scene through CCWS."

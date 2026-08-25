@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install and configure the CCWS Image Generation skill for Codex."""
+"""Install and configure the Custom Image Generation skill for Codex."""
 
 from __future__ import annotations
 
@@ -17,14 +17,15 @@ import urllib.parse
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
-BUNDLED_SKILL = PACKAGE_ROOT / "skill" / "ccws-image-generation"
-SKILL_NAME = "ccws-image-generation"
+BUNDLED_SKILL = PACKAGE_ROOT / "skill" / "custom-image-generation"
+SKILL_NAME = "custom-image-generation"
+LEGACY_SKILL_NAMES = ("ccws-image-generation",)
 MODEL_ID = "gpt-image-2"
 
 API_URL_EXAMPLE = "https://api.example.com/v1"
-API_URL_ENV = "CCWS_IMAGE_API_URL"
-API_KEY_ENV = "CCWS_IMAGE_API_KEY"
-CONFIG_ENV = "CCWS_IMAGE_CONFIG"
+API_URL_ENV = "IMAGE_GENERATION_API_URL"
+API_KEY_ENV = "IMAGE_GENERATION_API_KEY"
+CONFIG_ENV = "IMAGE_GENERATION_CONFIG"
 RUNTIME_CONFIG_FIELDS = (
     "python_executable",
     "python_framework_path",
@@ -70,9 +71,9 @@ def _skills_dir(args: argparse.Namespace) -> Path:
 
     # Keep existing installations in place. Fresh installs use the current
     # user-level Codex skill directory documented by OpenAI.
-    if (modern / SKILL_NAME).exists() or (modern / SKILL_NAME).is_symlink():
+    if any((modern / name).exists() or (modern / name).is_symlink() for name in (SKILL_NAME, *LEGACY_SKILL_NAMES)):
         return modern
-    if (legacy / SKILL_NAME).exists() or (legacy / SKILL_NAME).is_symlink():
+    if any((legacy / name).exists() or (legacy / name).is_symlink() for name in (SKILL_NAME, *LEGACY_SKILL_NAMES)):
         return legacy
     return modern
 
@@ -85,14 +86,28 @@ def _default_config_file() -> Path:
     if sys.platform == "win32":
         app_data = os.environ.get("APPDATA", "").strip()
         root = Path(app_data) if app_data else Path.home() / "AppData" / "Roaming"
-        return (root / "CCWS" / "image-generation.json").resolve()
+        return (root / "Codex Image Generation" / "image-generation.json").resolve()
 
     if sys.platform == "darwin":
-        return (Path.home() / "Library" / "Application Support" / "CCWS" / "image-generation.json").resolve()
+        return (Path.home() / "Library" / "Application Support" / "Codex Image Generation" / "image-generation.json").resolve()
 
     xdg_config = os.environ.get("XDG_CONFIG_HOME", "").strip()
     root = Path(xdg_config).expanduser() if xdg_config else Path.home() / ".config"
-    return (root / "ccws" / "image-generation.json").resolve()
+    return (root / "codex-image-generation" / "image-generation.json").resolve()
+
+
+def _legacy_config_files() -> List[Path]:
+    if sys.platform == "win32":
+        app_data = os.environ.get("APPDATA", "").strip()
+        root = Path(app_data) if app_data else Path.home() / "AppData" / "Roaming"
+        return [(root / "CCWS" / "image-generation.json").resolve()]
+    if sys.platform == "darwin":
+        return [
+            (Path.home() / "Library" / "Application Support" / "CCWS" / "image-generation.json").resolve()
+        ]
+    xdg_config = os.environ.get("XDG_CONFIG_HOME", "").strip()
+    root = Path(xdg_config).expanduser() if xdg_config else Path.home() / ".config"
+    return [(root / "ccws" / "image-generation.json").resolve()]
 
 
 def _config_file(args: argparse.Namespace) -> Path:
@@ -120,6 +135,16 @@ def _read_config(path: Path) -> Dict[str, str]:
     return {str(key): str(value) for key, value in data.items() if isinstance(value, (str, int, float, bool))}
 
 
+def _read_existing_config(path: Path) -> Dict[str, str]:
+    if path.exists():
+        return _read_config(path)
+    for legacy_path in _legacy_config_files():
+        if legacy_path.exists():
+            print("Legacy image configuration detected; saved values will be migrated.")
+            return _read_config(legacy_path)
+    return {}
+
+
 def _iter_skill_dirs(skills_root: Path) -> Iterable[Path]:
     if not skills_root.exists():
         return []
@@ -144,7 +169,7 @@ def _scan_image_skills(skills_root: Path) -> Tuple[List[Path], List[Path], List[
         if rel == OFFICIAL_IMAGE_SKILL_REL:
             official.append(skill_dir)
             continue
-        if skill_dir.name == SKILL_NAME:
+        if skill_dir.name == SKILL_NAME or skill_dir.name in LEGACY_SKILL_NAMES:
             target.append(skill_dir)
             continue
         if _looks_like_image_skill(skill_dir):
@@ -160,7 +185,7 @@ def _print_skill_scan(skills_root: Path, official: List[Path], target: List[Path
             print(f"  - {path}")
 
     if target:
-        print("Existing CCWS Image Generation skill will be upgraded in place:")
+        print("Existing or legacy image generation skill will be upgraded in place:")
         for path in target:
             print(f"  - {path}")
 
@@ -321,6 +346,13 @@ def _install_skill(skills_root: Path, dry_run: bool) -> None:
         return
 
     skills_root.mkdir(parents=True, exist_ok=True)
+    for legacy_name in LEGACY_SKILL_NAMES:
+        legacy_target = skills_root / legacy_name
+        if legacy_target.exists() or legacy_target.is_symlink():
+            legacy_backup = _unique_backup_path(skills_root / f"{SKILL_NAME}-legacy")
+            shutil.move(str(legacy_target), str(legacy_backup))
+            print(f"Backed up legacy image skill to {legacy_backup}")
+
     backup_path = None
     if target.exists() or target.is_symlink():
         backup_path = _unique_backup_path(target)
@@ -371,7 +403,7 @@ def _write_config(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Install and configure CCWS Image Generation for Codex.")
+    parser = argparse.ArgumentParser(description="Install and configure Custom Image Generation for Codex.")
     parser.add_argument(
         "--yes",
         action="store_true",
@@ -399,7 +431,7 @@ def main() -> int:
 
     skills_root = _skills_dir(args)
     config_path = _config_file(args)
-    existing_config = _read_config(config_path)
+    existing_config = _read_existing_config(config_path)
     api_url, api_key = _resolve_configuration(args, existing_config)
     runtime_config = _resolve_runtime_configuration(args)
 

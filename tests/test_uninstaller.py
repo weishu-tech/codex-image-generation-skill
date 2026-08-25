@@ -11,27 +11,27 @@ import unittest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-PACKAGE_ROOT = REPO_ROOT / "ccws-image-generation-installer"
+PACKAGE_ROOT = REPO_ROOT / "image-generation-installer"
 MACOS_UNINSTALLER = PACKAGE_ROOT / "uninstall-macos.command"
 WINDOWS_UNINSTALLER = PACKAGE_ROOT / "uninstall-windows.ps1"
 WINDOWS_BATCH = PACKAGE_ROOT / "uninstall-windows.bat"
 MACOS_INSTALLER = PACKAGE_ROOT / "install-macos.command"
 WINDOWS_INSTALLER = PACKAGE_ROOT / "install-windows.ps1"
-RUNTIME_MARKER = ".ccws-managed-python-runtime"
+RUNTIME_MARKER = ".codex-image-generation-managed-python-runtime"
 PYTHON_VERSION = "3.12.10"
 
 
-def _write_skill(path: Path, version: str = "1.2.0") -> None:
+def _write_skill(path: Path, version: str = "2.0.0") -> None:
     path.mkdir(parents=True)
     (path / "SKILL.md").write_text(
-        "---\nname: ccws-image-generation\ndescription: test fixture\n---\n",
+        "---\nname: custom-image-generation\ndescription: test fixture\n---\n",
         encoding="utf-8",
     )
     (path / "VERSION").write_text(f"{version}\n", encoding="utf-8")
 
 
 def _powershell() -> str | None:
-    configured = os.environ.get("CCWS_TEST_PWSH", "").strip()
+    configured = os.environ.get("IMAGE_GENERATION_TEST_PWSH", "").strip()
     if configured and Path(configured).is_file():
         return configured
     return shutil.which("pwsh")
@@ -45,7 +45,7 @@ class UninstallerTests(unittest.TestCase):
         self.assertTrue(WINDOWS_UNINSTALLER.is_file())
         self.assertIn("uninstall-windows.ps1", WINDOWS_BATCH.read_text(encoding="utf-8"))
 
-        marker_literal = ".ccws-managed-python-runtime"
+        marker_literal = ".codex-image-generation-managed-python-runtime"
         self.assertIn(marker_literal, MACOS_INSTALLER.read_text(encoding="utf-8"))
         self.assertIn(marker_literal, WINDOWS_INSTALLER.read_text(encoding="utf-8-sig"))
         self.assertIn(marker_literal, MACOS_UNINSTALLER.read_text(encoding="utf-8"))
@@ -55,20 +55,22 @@ class UninstallerTests(unittest.TestCase):
     def test_macos_uninstall_removes_active_install_and_preserves_backups(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:
             root = Path(temporary_dir)
-            modern_skill = root / ".agents" / "skills" / "ccws-image-generation"
-            legacy_skill = root / ".codex" / "skills" / "ccws-image-generation"
+            modern_skill = root / ".agents" / "skills" / "custom-image-generation"
+            legacy_skill = root / ".codex" / "skills" / "custom-image-generation"
             codex_home = root / "custom-codex"
-            codex_skill = codex_home / "skills" / "ccws-image-generation"
+            codex_skill = codex_home / "skills" / "custom-image-generation"
+            branded_skill = root / ".agents" / "skills" / "ccws-image-generation"
             other_skill = root / ".agents" / "skills" / "other-skill"
-            modern_backup = root / ".agents" / "skill-backups" / "ccws-image-generation.backup-test"
-            legacy_backup = root / ".codex" / "skill-backups" / "ccws-image-generation.backup-test"
-            config_file = root / "Library" / "Application Support" / "CCWS" / "image-generation.json"
-            runtime_root = root / "Library" / "Application Support" / "CCWS" / "Python" / PYTHON_VERSION
-            unrelated_file = root / "Library" / "Application Support" / "CCWS" / "keep-me.txt"
+            modern_backup = root / ".agents" / "skill-backups" / "custom-image-generation.backup-test"
+            legacy_backup = root / ".codex" / "skill-backups" / "custom-image-generation.backup-test"
+            config_file = root / "Library" / "Application Support" / "Codex Image Generation" / "image-generation.json"
+            runtime_root = root / "Library" / "Application Support" / "Codex Image Generation" / "Python" / PYTHON_VERSION
+            unrelated_file = root / "Library" / "Application Support" / "Codex Image Generation" / "keep-me.txt"
             api_key = "uninstall-test-secret"
 
             for skill in (modern_skill, legacy_skill, codex_skill):
                 _write_skill(skill)
+            _write_skill(branded_skill, version="1.2.0")
             _write_skill(other_skill)
             _write_skill(modern_backup, version="1.0.0")
             _write_skill(legacy_backup, version="1.0.0")
@@ -85,8 +87,8 @@ class UninstallerTests(unittest.TestCase):
             env["HOME"] = str(root)
             env["USERPROFILE"] = str(root)
             env["CODEX_HOME"] = str(codex_home)
-            env.pop("CCWS_IMAGE_CONFIG", None)
-            env.pop("CCWS_PYTHON_RUNTIME_ROOT", None)
+            env.pop("IMAGE_GENERATION_CONFIG", None)
+            env.pop("IMAGE_GENERATION_PYTHON_RUNTIME_ROOT", None)
 
             result = subprocess.run(
                 [str(MACOS_UNINSTALLER), "--yes"],
@@ -99,7 +101,7 @@ class UninstallerTests(unittest.TestCase):
             combined_output = result.stdout + result.stderr
             self.assertNotIn(api_key, combined_output)
             self.assertIn("卸载完成", combined_output)
-            for removed in (modern_skill, legacy_skill, codex_skill, config_file, runtime_root):
+            for removed in (modern_skill, legacy_skill, codex_skill, branded_skill, config_file, runtime_root):
                 self.assertFalse(removed.exists(), removed)
             for preserved in (other_skill, modern_backup, legacy_backup, unrelated_file):
                 self.assertTrue(preserved.exists(), preserved)
@@ -108,14 +110,14 @@ class UninstallerTests(unittest.TestCase):
     def test_macos_uninstall_defaults_to_cancel(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:
             root = Path(temporary_dir)
-            skill = root / ".agents" / "skills" / "ccws-image-generation"
+            skill = root / ".agents" / "skills" / "custom-image-generation"
             _write_skill(skill)
             env = os.environ.copy()
             env["HOME"] = str(root)
             env["USERPROFILE"] = str(root)
             env.pop("CODEX_HOME", None)
-            env.pop("CCWS_IMAGE_CONFIG", None)
-            env.pop("CCWS_PYTHON_RUNTIME_ROOT", None)
+            env.pop("IMAGE_GENERATION_CONFIG", None)
+            env.pop("IMAGE_GENERATION_PYTHON_RUNTIME_ROOT", None)
 
             result = subprocess.run(
                 [str(MACOS_UNINSTALLER)],
@@ -130,7 +132,7 @@ class UninstallerTests(unittest.TestCase):
             self.assertTrue(skill.exists())
 
     @unittest.skipUnless(sys.platform == "darwin", "macOS uninstaller test")
-    def test_macos_custom_targets_require_ccws_identity(self) -> None:
+    def test_macos_custom_targets_require_image_generation_identity(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:
             root = Path(temporary_dir)
             custom_config = root / "custom" / "settings.json"
@@ -139,15 +141,15 @@ class UninstallerTests(unittest.TestCase):
             custom_config.write_text(json.dumps({"model": "gpt-image-2", "api_key": "secret"}), encoding="utf-8")
             custom_runtime.mkdir(parents=True)
             (custom_runtime / RUNTIME_MARKER).write_text(
-                f"ccws-image-generation:{PYTHON_VERSION}\n",
+                f"custom-image-generation:{PYTHON_VERSION}\n",
                 encoding="utf-8",
             )
 
             env = os.environ.copy()
             env["HOME"] = str(root)
             env["USERPROFILE"] = str(root)
-            env["CCWS_IMAGE_CONFIG"] = str(custom_config)
-            env["CCWS_PYTHON_RUNTIME_ROOT"] = str(custom_runtime)
+            env["IMAGE_GENERATION_CONFIG"] = str(custom_config)
+            env["IMAGE_GENERATION_PYTHON_RUNTIME_ROOT"] = str(custom_runtime)
             env.pop("CODEX_HOME", None)
 
             subprocess.run(
@@ -162,8 +164,8 @@ class UninstallerTests(unittest.TestCase):
 
             unsafe_runtime = root / "custom" / "unmarked-python"
             unsafe_runtime.mkdir(parents=True)
-            env["CCWS_IMAGE_CONFIG"] = str(root / "missing-config.json")
-            env["CCWS_PYTHON_RUNTIME_ROOT"] = str(unsafe_runtime)
+            env["IMAGE_GENERATION_CONFIG"] = str(root / "missing-config.json")
+            env["IMAGE_GENERATION_PYTHON_RUNTIME_ROOT"] = str(unsafe_runtime)
             refused = subprocess.run(
                 [str(MACOS_UNINSTALLER), "--yes"],
                 capture_output=True,
@@ -200,18 +202,20 @@ class UninstallerTests(unittest.TestCase):
             app_data = root / "AppData" / "Roaming"
             local_app_data = root / "AppData" / "Local"
             codex_home = root / "custom-codex"
-            modern_skill = root / ".agents" / "skills" / "ccws-image-generation"
-            legacy_skill = root / ".codex" / "skills" / "ccws-image-generation"
-            codex_skill = codex_home / "skills" / "ccws-image-generation"
-            backup = root / ".agents" / "skill-backups" / "ccws-image-generation.backup-test"
+            modern_skill = root / ".agents" / "skills" / "custom-image-generation"
+            legacy_skill = root / ".codex" / "skills" / "custom-image-generation"
+            codex_skill = codex_home / "skills" / "custom-image-generation"
+            branded_skill = root / ".agents" / "skills" / "ccws-image-generation"
+            backup = root / ".agents" / "skill-backups" / "custom-image-generation.backup-test"
             other_skill = root / ".agents" / "skills" / "other-skill"
-            config_file = app_data / "CCWS" / "image-generation.json"
-            runtime_root = local_app_data / "CCWS" / "Python" / PYTHON_VERSION
-            unrelated_file = app_data / "CCWS" / "keep-me.txt"
+            config_file = app_data / "Codex Image Generation" / "image-generation.json"
+            runtime_root = local_app_data / "Codex Image Generation" / "Python" / PYTHON_VERSION
+            unrelated_file = app_data / "Codex Image Generation" / "keep-me.txt"
             api_key = "windows-uninstall-test-secret"
 
             for skill in (modern_skill, legacy_skill, codex_skill, other_skill):
                 _write_skill(skill)
+            _write_skill(branded_skill, version="1.2.0")
             _write_skill(backup, version="1.0.0")
             config_file.parent.mkdir(parents=True, exist_ok=True)
             config_file.write_text(
@@ -227,8 +231,8 @@ class UninstallerTests(unittest.TestCase):
             env["APPDATA"] = str(app_data)
             env["LOCALAPPDATA"] = str(local_app_data)
             env["CODEX_HOME"] = str(codex_home)
-            env.pop("CCWS_IMAGE_CONFIG", None)
-            env.pop("CCWS_PYTHON_RUNTIME_ROOT", None)
+            env.pop("IMAGE_GENERATION_CONFIG", None)
+            env.pop("IMAGE_GENERATION_PYTHON_RUNTIME_ROOT", None)
 
             result = subprocess.run(
                 [powershell, "-NoLogo", "-NoProfile", "-File", str(WINDOWS_UNINSTALLER), "--yes"],
@@ -241,7 +245,7 @@ class UninstallerTests(unittest.TestCase):
             combined_output = result.stdout + result.stderr
             self.assertNotIn(api_key, combined_output)
             self.assertIn("卸载完成", combined_output)
-            for removed in (modern_skill, legacy_skill, codex_skill, config_file, runtime_root):
+            for removed in (modern_skill, legacy_skill, codex_skill, branded_skill, config_file, runtime_root):
                 self.assertFalse(removed.exists(), removed)
             for preserved in (backup, other_skill, unrelated_file):
                 self.assertTrue(preserved.exists(), preserved)

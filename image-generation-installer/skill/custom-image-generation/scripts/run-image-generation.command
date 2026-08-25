@@ -3,8 +3,8 @@
 set -u
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(/usr/bin/dirname -- "$0")" && pwd)"
-CLI="$SCRIPT_DIR/ccws_image_generation.py"
-CONFIG_FILE="${CCWS_IMAGE_CONFIG:-$HOME/Library/Application Support/CCWS/image-generation.json}"
+CLI="$SCRIPT_DIR/image_generation.py"
+CONFIG_FILE="${IMAGE_GENERATION_CONFIG:-$HOME/Library/Application Support/Codex Image Generation/image-generation.json}"
 
 read_config_value() {
   local key="$1"
@@ -39,5 +39,5 @@ if command -v python >/dev/null 2>&1 && python --version 2>&1 | /usr/bin/grep -q
   exec python "$CLI" "$@"
 fi
 
-echo "未找到可用的 Python 3。请重新运行 CCWS Image Generation 一键安装器。" >&2
+echo "未找到可用的 Python 3。请重新运行 Custom Image Generation 一键安装器。" >&2
 exit 1

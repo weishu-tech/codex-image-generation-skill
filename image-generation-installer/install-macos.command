@@ -5,7 +5,7 @@ umask 077
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(/usr/bin/dirname -- "$0")" && pwd)"
 MANIFEST="$SCRIPT_DIR/python-runtime.json"
-RUNTIME_MARKER_NAME=".ccws-managed-python-runtime"
+RUNTIME_MARKER_NAME=".codex-image-generation-managed-python-runtime"
 TEMP_ROOT=""
 STAGING_ROOT=""
 
@@ -54,7 +54,7 @@ write_runtime_marker() {
   local runtime_root="$1"
   local marker_path="$runtime_root/$RUNTIME_MARKER_NAME"
 
-  /usr/bin/printf 'ccws-image-generation:%s\n' "$PYTHON_VERSION" > "$marker_path" || return 1
+  /usr/bin/printf 'custom-image-generation:%s\n' "$PYTHON_VERSION" > "$marker_path" || return 1
   /bin/chmod 600 "$marker_path" || return 1
 }
 
@@ -68,8 +68,8 @@ download_archive() {
   local template=""
   local -a candidates
 
-  if [[ -n "${CCWS_PYTHON_DOWNLOAD_URL:-}" ]]; then
-    candidates=("$CCWS_PYTHON_DOWNLOAD_URL")
+  if [[ -n "${IMAGE_GENERATION_PYTHON_DOWNLOAD_URL:-}" ]]; then
+    candidates=("$IMAGE_GENERATION_PYTHON_DOWNLOAD_URL")
   else
     template_count="$(manifest_value download_url_templates)" || return 1
     for ((index = 0; index < template_count; index++)); do
@@ -116,7 +116,7 @@ download_archive() {
 ensure_python_runtime() {
   if runtime_is_valid "$PYTHON_RUNTIME_ROOT"; then
     write_runtime_marker "$PYTHON_RUNTIME_ROOT" || return 1
-    echo "已检测到 CCWS 托管 Python $PYTHON_VERSION：$PYTHON_RUNTIME_ROOT"
+    echo "已检测到生图 Skill 托管 Python $PYTHON_VERSION：$PYTHON_RUNTIME_ROOT"
     return 0
   fi
 
@@ -127,7 +127,7 @@ ensure_python_runtime() {
   local backup=""
 
   /bin/mkdir -p -- "$runtime_parent" || return 1
-  TEMP_ROOT="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/ccws-python.XXXXXX")" || return 1
+  TEMP_ROOT="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/image-generation-python.XXXXXX")" || return 1
   STAGING_ROOT="$(/usr/bin/mktemp -d "${PYTHON_RUNTIME_ROOT}.staging.XXXXXX")" || return 1
   staging="$STAGING_ROOT"
   archive="$TEMP_ROOT/$PYTHON_FILENAME"
@@ -189,7 +189,7 @@ main() {
   PYTHON_RELATIVE_PATH="$(manifest_value macos.python_relative_path)" || return 1
   PYTHON_LIBRARY_RELATIVE_PATH="$(manifest_value macos.library_relative_path)" || return 1
   PYTHON_CERTIFICATE_RELATIVE_PATH="$(manifest_value macos.certificate_relative_path)" || return 1
-  PYTHON_RUNTIME_ROOT="${CCWS_PYTHON_RUNTIME_ROOT:-$HOME/Library/Application Support/CCWS/Python/$PYTHON_VERSION}"
+  PYTHON_RUNTIME_ROOT="${IMAGE_GENERATION_PYTHON_RUNTIME_ROOT:-$HOME/Library/Application Support/Codex Image Generation/Python/$PYTHON_VERSION}"
 
   ensure_python_runtime || return 1
 
@@ -220,7 +220,7 @@ STATUS=$?
 
 echo
 if [[ $STATUS -eq 0 ]]; then
-  echo "CCWS Image Generation 安装完成，可以关闭此窗口。"
+  echo "Custom Image Generation 安装完成，可以关闭此窗口。"
 else
   echo "安装失败，请保留上面的错误信息。"
 fi

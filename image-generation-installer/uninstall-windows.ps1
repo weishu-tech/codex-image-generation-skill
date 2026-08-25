@@ -3,8 +3,9 @@ Set-StrictMode -Version 2.0
 Set-Location -LiteralPath $PSScriptRoot
 
 $manifestPath = Join-Path $PSScriptRoot "python-runtime.json"
-$skillName = "ccws-image-generation"
-$runtimeMarkerName = ".ccws-managed-python-runtime"
+$skillName = "custom-image-generation"
+$legacySkillName = "ccws-image-generation"
+$runtimeMarkerName = ".codex-image-generation-managed-python-runtime"
 $assumeYes = $false
 $refusedTargets = $false
 
@@ -71,7 +72,7 @@ function Get-PathEntry {
     }
 }
 
-function Test-CcwsConfig {
+function Test-ImageGenerationConfig {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Path
@@ -94,7 +95,7 @@ function Test-RuntimeMarker {
     $markerPath = Join-Path $RuntimeRoot $runtimeMarkerName
     try {
         $actual = ([string](Get-Content -LiteralPath $markerPath -Raw -Encoding UTF8)).Trim()
-        return ($actual -eq "ccws-image-generation:$pythonVersion")
+        return ($actual -eq "custom-image-generation:$pythonVersion")
     } catch {
         return $false
     }
@@ -160,11 +161,14 @@ $modernSkill = Join-Path (Join-Path (Join-Path $homePath ".agents") "skills") $s
 $legacySkill = Join-Path (Join-Path (Join-Path $homePath ".codex") "skills") $skillName
 Add-ExistingTarget -Kind "Skill" -Path $modernSkill
 Add-ExistingTarget -Kind "Skill" -Path $legacySkill
+Add-ExistingTarget -Kind "旧版 Skill" -Path (Join-Path (Join-Path (Join-Path $homePath ".agents") "skills") $legacySkillName)
+Add-ExistingTarget -Kind "旧版 Skill" -Path (Join-Path (Join-Path (Join-Path $homePath ".codex") "skills") $legacySkillName)
 
 $codexHomePath = $null
 if ($env:CODEX_HOME) {
     $codexHomePath = Get-NormalizedPath -Path ([string]$env:CODEX_HOME)
     Add-ExistingTarget -Kind "Skill" -Path (Join-Path (Join-Path $codexHomePath "skills") $skillName)
+    Add-ExistingTarget -Kind "旧版 Skill" -Path (Join-Path (Join-Path $codexHomePath "skills") $legacySkillName)
 }
 
 $appData = if ($env:APPDATA) {
@@ -172,15 +176,15 @@ $appData = if ($env:APPDATA) {
 } else {
     Join-Path (Join-Path $homePath "AppData") "Roaming"
 }
-$defaultConfig = Get-NormalizedPath -Path (Join-Path (Join-Path $appData "CCWS") "image-generation.json")
-$configPath = if ($env:CCWS_IMAGE_CONFIG) {
-    Get-NormalizedPath -Path ([string]$env:CCWS_IMAGE_CONFIG)
+$defaultConfig = Get-NormalizedPath -Path (Join-Path (Join-Path $appData "Codex Image Generation") "image-generation.json")
+$configPath = if ($env:IMAGE_GENERATION_CONFIG) {
+    Get-NormalizedPath -Path ([string]$env:IMAGE_GENERATION_CONFIG)
 } else {
     $defaultConfig
 }
 $configEntry = Get-PathEntry -Path $configPath
 if ($null -ne $configEntry) {
-    if ((Test-SamePath -Left $configPath -Right $defaultConfig) -or (Test-CcwsConfig -Path $configPath)) {
+    if ((Test-SamePath -Left $configPath -Right $defaultConfig) -or (Test-ImageGenerationConfig -Path $configPath)) {
         Add-ExistingTarget -Kind "配置" -Path $configPath
     } else {
         Write-Warning "为避免误删，未识别的自定义配置文件不会删除：$configPath"
@@ -193,10 +197,10 @@ $localAppData = if ($env:LOCALAPPDATA) {
 } else {
     Join-Path (Join-Path $homePath "AppData") "Local"
 }
-$defaultPythonRoot = Join-Path (Join-Path $localAppData "CCWS") "Python"
+$defaultPythonRoot = Join-Path (Join-Path $localAppData "Codex Image Generation") "Python"
 $defaultRuntime = Get-NormalizedPath -Path (Join-Path $defaultPythonRoot $pythonVersion)
-$runtimePath = if ($env:CCWS_PYTHON_RUNTIME_ROOT) {
-    Get-NormalizedPath -Path ([string]$env:CCWS_PYTHON_RUNTIME_ROOT)
+$runtimePath = if ($env:IMAGE_GENERATION_PYTHON_RUNTIME_ROOT) {
+    Get-NormalizedPath -Path ([string]$env:IMAGE_GENERATION_PYTHON_RUNTIME_ROOT)
 } else {
     $defaultRuntime
 }
@@ -205,7 +209,7 @@ if ($null -ne $runtimeEntry) {
     if ((Test-SamePath -Left $runtimePath -Right $defaultRuntime) -or (Test-RuntimeMarker -RuntimeRoot $runtimePath)) {
         Add-ExistingTarget -Kind "Python" -Path $runtimePath
     } else {
-        Write-Warning "为避免误删，没有 CCWS 安全标记的自定义 Python 目录不会删除：$runtimePath"
+        Write-Warning "为避免误删，没有生图 Skill 安全标记的自定义 Python 目录不会删除：$runtimePath"
         $refusedTargets = $true
     }
 }
@@ -215,7 +219,7 @@ if ($targets.Count -eq 0) {
         Write-Host "未删除任何内容。请检查上面的安全提示。" -ForegroundColor Red
         exit 1
     }
-    Write-Host "未检测到需要卸载的 CCWS Image Generation 当前安装。"
+    Write-Host "未检测到需要卸载的 Custom Image Generation 当前安装。"
     Write-Host "以下历史 Skill 备份不会删除："
     Write-Host "  - $(Join-Path (Join-Path $homePath '.agents') 'skill-backups')"
     Write-Host "  - $(Join-Path (Join-Path $homePath '.codex') 'skill-backups')"
@@ -225,7 +229,7 @@ if ($targets.Count -eq 0) {
     exit 0
 }
 
-Write-Host "CCWS Image Generation 卸载器"
+Write-Host "Custom Image Generation 卸载器"
 Write-Host ""
 Write-Host "将删除以下当前安装内容："
 foreach ($target in $targets) {
@@ -265,8 +269,8 @@ foreach ($target in $targets) {
 }
 
 Remove-EmptyDirectory -Path $defaultPythonRoot
-Remove-EmptyDirectory -Path (Join-Path $localAppData "CCWS")
-Remove-EmptyDirectory -Path (Join-Path $appData "CCWS")
+Remove-EmptyDirectory -Path (Join-Path $localAppData "Codex Image Generation")
+Remove-EmptyDirectory -Path (Join-Path $appData "Codex Image Generation")
 
 if ($refusedTargets) {
     $failure = $true
