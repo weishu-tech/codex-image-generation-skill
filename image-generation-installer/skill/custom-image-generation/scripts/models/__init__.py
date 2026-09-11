@@ -5,6 +5,11 @@ from __future__ import annotations
 from typing import Dict, Iterable, Optional, Protocol
 
 from .gpt_image_2 import SPEC as GPT_IMAGE_2_SPEC
+from .gpt_image_2_5 import (
+    GPT_IMAGE_2_5_FLARE_SPEC,
+    GPT_IMAGE_2_5_SPEC,
+    GPT_IMAGE_2_5_SUNBURST_SPEC,
+)
 
 
 class ModelSpec(Protocol):
@@ -26,9 +31,12 @@ class ModelSpec(Protocol):
 
 MODEL_SPECS: Dict[str, ModelSpec] = {
     GPT_IMAGE_2_SPEC.model_id: GPT_IMAGE_2_SPEC,
+    GPT_IMAGE_2_5_SPEC.model_id: GPT_IMAGE_2_5_SPEC,
+    GPT_IMAGE_2_5_FLARE_SPEC.model_id: GPT_IMAGE_2_5_FLARE_SPEC,
+    GPT_IMAGE_2_5_SUNBURST_SPEC.model_id: GPT_IMAGE_2_5_SUNBURST_SPEC,
 }
 
-DEFAULT_MODEL = GPT_IMAGE_2_SPEC.model_id
+DEFAULT_MODEL = GPT_IMAGE_2_5_SPEC.model_id
 
 
 def supported_model_ids() -> Iterable[str]:

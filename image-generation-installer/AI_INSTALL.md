@@ -10,9 +10,11 @@ This package installs and configures the `custom-image-generation` Codex skill o
 The installer itself asks for exactly two configuration values:
 
 1. The required API address, for example `https://api.example.com`. There is no built-in default.
-2. An API Key that supports `model: gpt-image-2`.
+2. An API Key that supports `model: gpt-image-2.5`, `gpt-image-2.5-flare`, and `gpt-image-2.5-sunburst` (with `gpt-image-2` retained for compatibility).
 
 The installer appends `/v1` when the normalized address does not already end with that exact path segment. The API Key prompt is hidden. Potentially conflicting image skills are reported without adding another confirmation question and are never modified.
+
+To update to the newest repository-provided skill, download the latest `image-generation-installer.zip` from Releases and run the same platform installer again. It backs up and replaces only `custom-image-generation`, preserves the saved API address and API Key when the user presses Enter, and never modifies Codex's official built-in image skill.
 
 No preinstalled Python is required. Before showing those two prompts, the launcher automatically installs official CPython `3.12.10` under the current user's image-generation application-data directory. It does not request administrator privileges, change PATH, or replace a system Python.
 
@@ -97,7 +99,9 @@ skill/
     scripts/run-image-generation.command
     scripts/run-image-generation.ps1
     scripts/models/__init__.py
+    scripts/models/gpt_image_common.py
     scripts/models/gpt_image_2.py
+    scripts/models/gpt_image_2_5.py
 ```
 
 ## Notes For AI Assistants

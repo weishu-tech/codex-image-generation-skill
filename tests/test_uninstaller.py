@@ -21,7 +21,7 @@ RUNTIME_MARKER = ".codex-image-generation-managed-python-runtime"
 PYTHON_VERSION = "3.12.10"
 
 
-def _write_skill(path: Path, version: str = "2.0.0") -> None:
+def _write_skill(path: Path, version: str = "2.1.0") -> None:
     path.mkdir(parents=True)
     (path / "SKILL.md").write_text(
         "---\nname: custom-image-generation\ndescription: test fixture\n---\n",
@@ -76,7 +76,7 @@ class UninstallerTests(unittest.TestCase):
             _write_skill(legacy_backup, version="1.0.0")
             config_file.parent.mkdir(parents=True, exist_ok=True)
             config_file.write_text(
-                json.dumps({"api_url": "https://api.example.com/v1", "api_key": api_key, "model": "gpt-image-2"}),
+                json.dumps({"api_url": "https://api.example.com/v1", "api_key": api_key, "model": "gpt-image-2.5"}),
                 encoding="utf-8",
             )
             runtime_root.mkdir(parents=True)
@@ -219,7 +219,7 @@ class UninstallerTests(unittest.TestCase):
             _write_skill(backup, version="1.0.0")
             config_file.parent.mkdir(parents=True, exist_ok=True)
             config_file.write_text(
-                json.dumps({"api_url": "https://api.example.com/v1", "api_key": api_key, "model": "gpt-image-2"}),
+                json.dumps({"api_url": "https://api.example.com/v1", "api_key": api_key, "model": "gpt-image-2.5-flare"}),
                 encoding="utf-8",
             )
             runtime_root.mkdir(parents=True)

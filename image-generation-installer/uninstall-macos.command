@@ -43,7 +43,14 @@ config_is_image_generation() {
 
   [[ -f "$path" ]] || return 1
   model="$(/usr/bin/plutil -extract model raw -o - -- "$path" 2>/dev/null)" || return 1
-  [[ "$model" == "gpt-image-2" ]]
+  case "$model" in
+    gpt-image-2|gpt-image-2.5|gpt-image-2.5-flare|gpt-image-2.5-sunburst)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
 }
 
 runtime_has_marker() {

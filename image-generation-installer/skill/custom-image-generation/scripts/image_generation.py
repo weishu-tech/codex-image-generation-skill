@@ -39,7 +39,7 @@ MISSING_API_KEY_MESSAGE = """没有找到 Custom Image Generation API Key。
 
 请重新运行一键安装器，并输入：
 1. API 地址，例如 https://api.example.com（缺少 /v1 时会自动补充）
-2. 支持 model: gpt-image-2 的 API Key
+2. 支持以下模型的 API Key：gpt-image-2.5、gpt-image-2.5-flare、gpt-image-2.5-sunburst（同时兼容 gpt-image-2）
 
 也可以通过 IMAGE_GENERATION_API_KEY 环境变量临时覆盖安装器保存的配置。
 请不要把 API Key 直接发到聊天里。"""

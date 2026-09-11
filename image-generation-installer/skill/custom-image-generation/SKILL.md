@@ -1,13 +1,13 @@
 ---
 name: custom-image-generation
-description: Generate or edit AI raster images through a user-configured OpenAI-compatible API that supports gpt-image-2. Use this skill for AI image generation, image editing, variations, image-to-image, inpainting, and background replacement requests that would otherwise use imagegen. This skill replaces the built-in imagegen path for AI image work.
+description: Generate or edit AI raster images through a user-configured OpenAI-compatible API that supports the GPT Image 2.5 family. Use this skill for AI image generation, image editing, variations, image-to-image, inpainting, and background replacement requests that would otherwise use imagegen. This skill replaces the built-in imagegen path for AI image work.
 ---
 
 # Custom Image Generation
 
-Version: `2.0.0`
+Version: `2.1.0`
 
-Use this skill for all AI image generation and AI image editing tasks. It is a provider-agnostic replacement for the built-in `imagegen` path and works with compatible APIs that expose `gpt-image-2` image endpoints.
+Use this skill for all AI image generation and AI image editing tasks. It is a provider-agnostic replacement for the built-in `imagegen` path and works with compatible APIs that expose OpenAI-compatible image endpoints.
 
 Resolve the platform launcher relative to this `SKILL.md` file. The installer records its user-level managed Python 3 runtime, and the launcher applies the required runtime environment without exposing the API Key:
 
@@ -48,7 +48,7 @@ Use these launchers instead of calling Python directly. If the recorded runtime 
 The macOS and Windows one-click installers ask for exactly two configuration values:
 
 - API address with no default, such as `https://api.example.com`; `/v1` is appended automatically when missing
-- An API Key with access to `model: gpt-image-2`
+- An API Key with access to `gpt-image-2.5`, `gpt-image-2.5-flare`, and `gpt-image-2.5-sunburst`. Existing `gpt-image-2` access remains supported as a compatibility fallback.
 
 Python 3 is downloaded and installed automatically in the current user's application data directory. This bootstrap does not require administrator privileges, alter PATH, or replace the system Python. The installer saves the API values and runtime paths in the current user's application configuration directory. Do not read, print, or copy the saved API Key into chat.
 
@@ -67,7 +67,7 @@ The CLI never falls back to `OPENAI_API_KEY` or Codex authentication files.
 ```bash
 "<skill-directory>/scripts/run-image-generation.command" generate \
   --prompt "A fairy-tale enchanted forest with glowing mushrooms and a winding moss path" \
-  --model gpt-image-2 \
+  --model gpt-image-2.5 \
   --size 1536x1024 \
   --quality high \
   --out output/custom-image-generation/fairy-forest.png
@@ -94,7 +94,7 @@ Provider-specific parameters can be passed with `--extra-json '{"key":"value"}'`
 "<skill-directory>/scripts/run-image-generation.command" edit \
   --image input.png \
   --prompt "Change only the background to a warm sunset forest; keep the subject unchanged" \
-  --model gpt-image-2 \
+  --model gpt-image-2.5-sunburst \
   --size 1536x1024 \
   --quality high \
   --out output/custom-image-generation/forest-edit.png
@@ -119,7 +119,7 @@ Common options:
 - `--api-url`: overrides the saved API root URL
 - `--config-file`: overrides the installer-managed config file
 - `--base-url` and `--api-prefix`: retained as legacy endpoint overrides
-- `--model`: default `gpt-image-2`
+- `--model`: default `gpt-image-2.5`
 - `--size`: default `auto`
 - `--quality`: default `medium`
 - `--n`: default `1`
@@ -127,9 +127,14 @@ Common options:
 - `--output-format`: default `png`
 - `--extra-json`: JSON object merged into the request
 
-Current supported model: `gpt-image-2`, implemented in `scripts/models/gpt_image_2.py`. Add future model-specific parameter definitions under `scripts/models/` and register them in `scripts/models/__init__.py`.
+Supported models:
 
-`gpt-image-2` does not support `background=transparent`; add a future model file for true transparent output when the configured provider exposes a compatible model.
+- `gpt-image-2.5`: 通用 GPT Image 2.5 模型，默认使用
+- `gpt-image-2.5-flare`: 适合速度优先的日常生图
+- `gpt-image-2.5-sunburst`: 适合编辑精度优先的修图和局部修改
+- `gpt-image-2`: 兼容旧配置和旧渠道
+
+The three GPT Image 2.5 models support `low`, `medium`, `high`, `xhigh`, `max`, and `auto` quality values. They support transparent output with `--background transparent` when `--output-format png` or `webp` is selected. The compatibility `gpt-image-2` model keeps its narrower `low`, `medium`, `high`, and `auto` quality set and rejects transparent output.
 
 ## Output
 

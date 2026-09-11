@@ -20,7 +20,8 @@ PACKAGE_ROOT = Path(__file__).resolve().parent
 BUNDLED_SKILL = PACKAGE_ROOT / "skill" / "custom-image-generation"
 SKILL_NAME = "custom-image-generation"
 LEGACY_SKILL_NAMES = ("ccws-image-generation",)
-MODEL_ID = "gpt-image-2"
+MODEL_ID = "gpt-image-2.5"
+SUPPORTED_MODEL_HINT = "gpt-image-2.5、gpt-image-2.5-flare、gpt-image-2.5-sunburst（同时兼容 gpt-image-2）"
 
 API_URL_EXAMPLE = "https://api.example.com/v1"
 API_URL_ENV = "IMAGE_GENERATION_API_URL"
@@ -245,7 +246,7 @@ def _prompt_api_url(existing: str) -> str:
 def _prompt_api_key(existing: str) -> str:
     while True:
         suffix = "（直接回车沿用现有 Key）" if existing else ""
-        value = getpass.getpass(f"支持 {MODEL_ID} 的 API Key{suffix}: ").strip()
+        value = getpass.getpass(f"支持 {SUPPORTED_MODEL_HINT} 的 API Key{suffix}: ").strip()
         if value:
             return value
         if existing:
@@ -360,7 +361,11 @@ def _install_skill(skills_root: Path, dry_run: bool) -> None:
         print(f"Backed up existing skill to {backup_path}")
 
     try:
-        shutil.copytree(BUNDLED_SKILL, target)
+        shutil.copytree(
+            BUNDLED_SKILL,
+            target,
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+        )
     except Exception:
         if backup_path and not target.exists() and backup_path.exists():
             shutil.move(str(backup_path), str(target))

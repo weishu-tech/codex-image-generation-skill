@@ -123,12 +123,12 @@ class InstallerTests(unittest.TestCase):
 
             installed_skill = skills_dir / "custom-image-generation"
             self.assertTrue((installed_skill / "SKILL.md").is_file())
-            self.assertEqual((installed_skill / "VERSION").read_text(encoding="utf-8").strip(), "2.0.0")
+            self.assertEqual((installed_skill / "VERSION").read_text(encoding="utf-8").strip(), "2.1.0")
 
             config = json.loads(config_file.read_text(encoding="utf-8"))
             self.assertEqual(config["api_url"], "https://api.example.com/v1")
             self.assertEqual(config["api_key"], api_key)
-            self.assertEqual(config["model"], "gpt-image-2")
+            self.assertEqual(config["model"], "gpt-image-2.5")
             self.assertEqual(Path(config["python_executable"]), Path(sys.executable).resolve())
             if os.name != "nt":
                 self.assertEqual(stat.S_IMODE(config_file.stat().st_mode), 0o600)
@@ -154,7 +154,7 @@ class InstallerTests(unittest.TestCase):
             self.assertNotIn(api_key, dry_run.stdout + dry_run.stderr)
             payload = json.loads(dry_run.stdout)
             self.assertEqual(payload["url"], "https://api.example.com/v1/images/generations")
-            self.assertEqual(payload["payload"]["model"], "gpt-image-2")
+            self.assertEqual(payload["payload"]["model"], "gpt-image-2.5")
 
     def test_fresh_install_uses_current_user_skill_directory(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:
@@ -225,7 +225,7 @@ class InstallerTests(unittest.TestCase):
             )
 
             installed_skill = root / ".codex" / "skills" / "custom-image-generation"
-            self.assertEqual((installed_skill / "VERSION").read_text(encoding="utf-8").strip(), "2.0.0")
+            self.assertEqual((installed_skill / "VERSION").read_text(encoding="utf-8").strip(), "2.1.0")
             self.assertFalse(legacy_skill.exists())
             backups = list((root / ".codex" / "skill-backups").glob("custom-image-generation-legacy.backup-*"))
             self.assertEqual(len(backups), 1)
@@ -422,7 +422,7 @@ class InstallerTests(unittest.TestCase):
             )
             self.assertNotIn(api_key, result.stdout + result.stderr)
             payload = json.loads(result.stdout)
-            self.assertEqual(payload["payload"]["model"], "gpt-image-2")
+            self.assertEqual(payload["payload"]["model"], "gpt-image-2.5")
 
     @unittest.skipUnless(sys.platform == "darwin", "macOS bootstrap test")
     def test_macos_bootstrap_rejects_bad_python_archive_hash(self) -> None:
@@ -527,7 +527,7 @@ class InstallerTests(unittest.TestCase):
             )
             self.assertNotIn(api_key, dry_run.stdout + dry_run.stderr)
             payload = json.loads(dry_run.stdout)
-            self.assertEqual(payload["payload"]["model"], "gpt-image-2")
+            self.assertEqual(payload["payload"]["model"], "gpt-image-2.5")
 
 
 if __name__ == "__main__":

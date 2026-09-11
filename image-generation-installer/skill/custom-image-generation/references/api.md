@@ -2,7 +2,7 @@
 
 Use this reference when advanced request controls are needed.
 
-Current version: `2.0.0`. The canonical version source is the skill root `VERSION` file; the platform launchers expose it through `--version`.
+Current version: `2.1.0`. The canonical version source is the skill root `VERSION` file; the platform launchers expose it through `--version`.
 
 ## URL construction
 
@@ -58,7 +58,7 @@ $env:IMAGE_GENERATION_API_URL="https://api.example.com"
 $env:IMAGE_GENERATION_API_KEY="your-api-key"
 ```
 
-The CLI does not fall back to `OPENAI_API_KEY` or Codex authentication files. The token must include access to `model: gpt-image-2`.
+The CLI does not fall back to `OPENAI_API_KEY` or Codex authentication files. The token should include access to `gpt-image-2.5`, `gpt-image-2.5-flare`, and `gpt-image-2.5-sunburst`; `gpt-image-2` remains supported for compatibility.
 
 ## JSON generation payload
 
@@ -120,7 +120,9 @@ If a response contains more images than `--n`, the script creates additional num
 - `scripts/run-image-generation.ps1`: Windows runtime launcher.
 - `scripts/image_generation.py`: cross-platform main CLI. Handles auth, URL construction, HTTP, multipart upload, response decoding, output files, dry-run, and model dispatch.
 - `scripts/models/__init__.py`: model registry.
-- `scripts/models/gpt_image_2.py`: current gpt-image-2 parameter definitions, payload construction, and validation.
+- `scripts/models/gpt_image_common.py`: shared payload construction and size/output validation.
+- `scripts/models/gpt_image_2.py`: compatibility gpt-image-2 parameter definitions.
+- `scripts/models/gpt_image_2_5.py`: the three GPT Image 2.5 model definitions.
 
 To add a future model, create a new `scripts/models/<model_name>.py` file with the same `SPEC` interface and register it in `scripts/models/__init__.py`.
 
@@ -131,5 +133,5 @@ To add a future model, create a new `scripts/models/<model_name>.py` file with t
 - Missing API Key: rerun the one-click installer, or set `IMAGE_GENERATION_API_KEY` for the current process.
 - Missing Python 3: rerun the one-click installer. It installs a private, user-level Python runtime without changing PATH or the system Python.
 - 404: check the saved API root and proxy path. The installer and CLI automatically append `/v1` when it is missing.
-- `background=transparent`: current `gpt-image-2` model file rejects this before sending because gpt-image-2 does not support true transparent output.
+- `background=transparent`: supported by the three GPT Image 2.5 models when the output format is PNG or WebP; the compatibility `gpt-image-2` model rejects it before sending.
 - Multipart edit field errors: retry with `--image-field "image[]"`.

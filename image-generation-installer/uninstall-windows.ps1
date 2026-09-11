@@ -80,7 +80,12 @@ function Test-ImageGenerationConfig {
 
     try {
         $configuration = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
-        return ([string]$configuration.model -eq "gpt-image-2")
+        return ([string]$configuration.model -in @(
+            "gpt-image-2",
+            "gpt-image-2.5",
+            "gpt-image-2.5-flare",
+            "gpt-image-2.5-sunburst"
+        ))
     } catch {
         return $false
     }

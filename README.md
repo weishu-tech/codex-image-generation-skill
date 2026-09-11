@@ -2,7 +2,7 @@
 
 这是一个不绑定具体品牌的 Codex 生图 Skill macOS / Windows 一键安装包。
 
-它会安装 `custom-image-generation`，通过支持 `gpt-image-2` 的兼容 API 完成 AI 生图、图片编辑、图生图、局部修改和背景替换等任务。
+它会安装 `custom-image-generation`，通过兼容 API 支持 `gpt-image-2.5`、`gpt-image-2.5-flare`、`gpt-image-2.5-sunburst` 和 `gpt-image-2`，完成 AI 生图、图片编辑、图生图、局部修改和背景替换等任务。
 
 ## 一键安装
 
@@ -18,11 +18,21 @@ image-generation-installer.zip
 安装过程中只要求输入两项：
 
 1. API 地址（必填，不提供默认值），例如 `https://api.example.com`
-2. 支持 `model: gpt-image-2` 的 API Key
+2. 支持 `model: gpt-image-2.5`、`gpt-image-2.5-flare`、`gpt-image-2.5-sunburst` 的 API Key（同时兼容 `gpt-image-2`）
 
 API 地址末尾没有精确的 `/v1` 时，安装器会自动补充；已经带有 `/v1` 时不会重复添加。API Key 使用隐藏输入，不会回显。安装完成后重启 Codex，或新开一个 Codex 任务即可使用。
 
 从旧版升级时，安装器会自动备份旧 Skill，并在新的通用配置尚不存在时沿用旧配置中的 API 地址和 API Key。旧名称只保留在迁移逻辑中，不再作为产品名称展示。
+
+## 更新到仓库最新版本
+
+本项目不直接修改 Codex 官方内置 Skill，也不要求用户手动替换 `~/.codex/skills/.system/imagegen`。每次发布都会在本仓库的 [Releases](https://github.com/xiaofengtongxue-lab/codex-image-generation-skill/releases) 提供最新 `image-generation-installer.zip`：
+
+1. 下载并解压最新压缩包。
+2. macOS 双击 `install-macos.command`，Windows 双击 `install-windows.bat`。
+3. 直接回车沿用已有 API 地址和 API Key，或按提示重新填写。
+
+安装器会把仓库内的 `custom-image-generation` 更新到最新版本，先备份旧 Skill，并保留已有配置；官方内置 Skill、其他 Skill 和系统 Python 不会被修改。更新完成后重启 Codex，或新开一个 Codex 任务即可生效。
 
 ## 一键卸载
 
@@ -64,6 +74,29 @@ API 地址末尾没有精确的 `/v1` 时，安装器会自动补充；已经带
 ```
 
 生成结果通常保存在当前项目的 `output/custom-image-generation/` 目录，Codex 会返回生成文件的路径；在 Codex 桌面版中也可以直接预览图片。
+
+## 模型选择
+
+安装后的默认模型是 `gpt-image-2.5`。需要指定模型时，可以在请求中使用：
+
+```text
+使用 gpt-image-2.5-flare，快速生成一张横版产品图。
+```
+
+```text
+使用 gpt-image-2.5-sunburst，精确修改这张图片的背景，保持主体不变。
+```
+
+命令行也可以通过 `--model` 选择：
+
+```bash
+"<skill-directory>/scripts/run-image-generation.command" generate \
+  --model gpt-image-2.5-flare \
+  --prompt "A clean product photo" \
+  --out output/custom-image-generation/product.png
+```
+
+三个 GPT Image 2.5 模型支持 `low`、`medium`、`high`、`xhigh`、`max` 和 `auto`，并支持 PNG/WebP 透明背景。旧的 `gpt-image-2` 仍可用于兼容旧渠道，但只支持 `low`、`medium`、`high` 和 `auto`，不支持透明背景。
 
 如果提示缺少 API 地址或 API Key，请重新运行一键安装器。不要把 API Key 发送到聊天中。接口调用失败时，请保留完整错误信息，并在售后群咨询。
 
@@ -130,10 +163,10 @@ py -3 .\install.py --yes
 
 ## 版本
 
-当前版本：`2.0.0`
+当前版本：`2.1.0`
 
 压缩包 SHA256：
 
 ```text
-0a537b5ae3dcf0814909bf57117997e8ff4bb4f1829285b8a1596687ad1b9ad9
+d7cc4ca074d6b4098a72ee3fdee982fb4bdc3872f4f76b14b32bb7f59f24abfe
 ```
