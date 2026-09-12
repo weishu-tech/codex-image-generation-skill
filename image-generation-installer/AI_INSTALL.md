@@ -16,6 +16,8 @@ The installer appends `/v1` when the normalized address does not already end wit
 
 To update to the newest repository-provided skill, download the latest `image-generation-installer.zip` from Releases and run the same platform installer again. It backs up and replaces only `custom-image-generation`, preserves the saved API address and API Key when the user presses Enter, and never modifies Codex's official built-in image skill.
 
+The CLI validates the returned image format, pixel dimensions, and Alpha channel after each response. If a provider ignores a requested size or format, it prints a warning and still saves the original bytes to the requested path; validation never turns a successful generation into a failed save.
+
 No preinstalled Python is required. Before showing those two prompts, the launcher automatically installs official CPython `3.12.10` under the current user's image-generation application-data directory. It does not request administrator privileges, change PATH, or replace a system Python.
 
 Download order is Tsinghua TUNA, Huawei Cloud, npmmirror, then python.org. Every artifact is checked against the pinned SHA256 in `python-runtime.json`; the macOS package signature is also verified before extraction.

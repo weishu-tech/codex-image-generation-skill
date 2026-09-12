@@ -5,7 +5,7 @@ description: Generate or edit AI raster images through a user-configured OpenAI-
 
 # Custom Image Generation
 
-Version: `2.1.0`
+Version: `2.1.1`
 
 Use this skill for all AI image generation and AI image editing tasks. It is a provider-agnostic replacement for the built-in `imagegen` path and works with compatible APIs that expose OpenAI-compatible image endpoints.
 
@@ -139,6 +139,8 @@ The three GPT Image 2.5 models support `low`, `medium`, `high`, `xhigh`, `max`, 
 ## Output
 
 The script supports base64 and URL image responses. It writes decoded or downloaded images to `--out` or generated filenames in `--out-dir`. It fails rather than overwriting existing files unless `--force` is set.
+
+After a response is decoded, the CLI checks the returned raster format, pixel dimensions, and Alpha channel when transparent output was requested. A provider can ignore or downgrade a requested format or size; the CLI prints a short warning with the observed result but still writes the original bytes to the requested path. Result validation never blocks image generation or saving.
 
 ## Failure Output
 

@@ -2,7 +2,7 @@
 
 Use this reference when advanced request controls are needed.
 
-Current version: `2.1.0`. The canonical version source is the skill root `VERSION` file; the platform launchers expose it through `--version`.
+Current version: `2.1.1`. The canonical version source is the skill root `VERSION` file; the platform launchers expose it through `--version`.
 
 ## URL construction
 
@@ -114,6 +114,8 @@ The script accepts response items with:
 
 If a response contains more images than `--n`, the script creates additional numbered output filenames.
 
+The CLI inspects returned PNG, JPEG, and WebP headers after decoding. If the provider returns a different format, smaller dimensions, or no Alpha channel for a transparent request, it prints a warning and still saves the bytes to the requested path. This is deliberately non-blocking: a provider mismatch must not turn a successful generation into a failed save. The warning is the source of truth for the actual returned format and dimensions.
+
 ## Script structure
 
 - `scripts/run-image-generation.command`: macOS runtime launcher.
@@ -133,5 +135,6 @@ To add a future model, create a new `scripts/models/<model_name>.py` file with t
 - Missing API Key: rerun the one-click installer, or set `IMAGE_GENERATION_API_KEY` for the current process.
 - Missing Python 3: rerun the one-click installer. It installs a private, user-level Python runtime without changing PATH or the system Python.
 - 404: check the saved API root and proxy path. The installer and CLI automatically append `/v1` when it is missing.
-- `background=transparent`: supported by the three GPT Image 2.5 models when the output format is PNG or WebP; the compatibility `gpt-image-2` model rejects it before sending.
+- `background=transparent`: supported by the three GPT Image 2.5 models when the output format is PNG or WebP; the compatibility `gpt-image-2` model rejects it before sending. The result validator reports whether the returned bytes actually contain an Alpha channel.
+- Provider ignores `size` or `output_format`: keep the saved file, read the non-blocking warning for the actual format and dimensions, and do not treat accepted request parameters as proof of 2K/4K output.
 - Multipart edit field errors: retry with `--image-field "image[]"`.

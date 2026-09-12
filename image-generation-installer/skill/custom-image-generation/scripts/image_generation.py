@@ -6,11 +6,13 @@ from __future__ import annotations
 import argparse
 import base64
 import binascii
+from dataclasses import dataclass
 import json
 import mimetypes
 import os
 from pathlib import Path
 import re
+import struct
 import sys
 import time
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
@@ -512,6 +514,170 @@ def _bytes_from_b64(value: str) -> bytes:
         )
 
 
+@dataclass(frozen=True)
+class ImageInfo:
+    format: str
+    width: Optional[int]
+    height: Optional[int]
+    has_alpha: Optional[bool] = None
+
+
+def _inspect_image_bytes(data: bytes) -> Optional[ImageInfo]:
+    """Inspect common raster headers without requiring Pillow.
+
+    Providers sometimes return a different format or size than requested. This
+    helper intentionally only observes the response; validation callers must
+    warn and continue saving the original bytes.
+    """
+
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        if len(data) < 26:
+            return ImageInfo("png", None, None, None)
+        width, height = struct.unpack(">II", data[16:24])
+        color_type = data[25]
+        has_alpha = color_type in {4, 6}
+        cursor = 8
+        while cursor + 12 <= len(data):
+            chunk_length = struct.unpack(">I", data[cursor : cursor + 4])[0]
+            chunk_type = data[cursor + 4 : cursor + 8]
+            if chunk_type == b"tRNS":
+                has_alpha = True
+            cursor += 12 + chunk_length
+            if chunk_type == b"IEND":
+                break
+        return ImageInfo("png", width, height, has_alpha)
+
+    if data.startswith(b"\xff\xd8"):
+        cursor = 2
+        sof_markers = {
+            0xC0,
+            0xC1,
+            0xC2,
+            0xC3,
+            0xC5,
+            0xC6,
+            0xC7,
+            0xC9,
+            0xCA,
+            0xCB,
+            0xCD,
+            0xCE,
+            0xCF,
+        }
+        while cursor + 1 < len(data):
+            if data[cursor] != 0xFF:
+                cursor += 1
+                continue
+            while cursor < len(data) and data[cursor] == 0xFF:
+                cursor += 1
+            if cursor >= len(data):
+                break
+            marker = data[cursor]
+            cursor += 1
+            if marker in {0xD8, 0xD9, 0x01}:
+                continue
+            if cursor + 2 > len(data):
+                break
+            segment_length = struct.unpack(">H", data[cursor : cursor + 2])[0]
+            if segment_length < 2 or cursor + segment_length > len(data):
+                break
+            if marker in sof_markers and segment_length >= 7:
+                height, width = struct.unpack(">HH", data[cursor + 3 : cursor + 7])
+                return ImageInfo("jpeg", width, height, False)
+            cursor += segment_length
+        return ImageInfo("jpeg", None, None, False)
+
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        cursor = 12
+        while cursor + 8 <= len(data):
+            chunk_type = data[cursor : cursor + 4]
+            chunk_length = struct.unpack("<I", data[cursor + 4 : cursor + 8])[0]
+            chunk_start = cursor + 8
+            chunk = data[chunk_start : chunk_start + chunk_length]
+            if chunk_type == b"VP8X" and len(chunk) >= 10:
+                width = 1 + int.from_bytes(chunk[4:7], "little")
+                height = 1 + int.from_bytes(chunk[7:10], "little")
+                return ImageInfo("webp", width, height, bool(chunk[0] & 0x10))
+            if chunk_type == b"VP8L" and len(chunk) >= 5 and chunk[0] == 0x2F:
+                width = 1 + ((chunk[1] | (chunk[2] << 8)) & 0x3FFF)
+                height = 1 + (((chunk[2] >> 6) | (chunk[3] << 2) | (chunk[4] << 10)) & 0x3FFF)
+                return ImageInfo("webp", width, height, None)
+            if chunk_type == b"VP8 " and len(chunk) >= 10 and chunk[3:6] == b"\x9d\x01\x2a":
+                width = int.from_bytes(chunk[6:8], "little") & 0x3FFF
+                height = int.from_bytes(chunk[8:10], "little") & 0x3FFF
+                return ImageInfo("webp", width, height, False)
+            if chunk_type == b"VP8 ":
+                return ImageInfo("webp", None, None, None)
+            cursor = chunk_start + chunk_length + (chunk_length & 1)
+        return ImageInfo("webp", None, None, None)
+
+    return None
+
+
+def _normalize_expected_format(value: Optional[Any]) -> Optional[str]:
+    if value is None:
+        return None
+    normalized = str(value).strip().lower()
+    if normalized == "jpg":
+        return "jpeg"
+    return normalized or None
+
+
+def _requested_size_check(value: Optional[Any]) -> Optional[Tuple[str, Tuple[int, int]]]:
+    if value is None:
+        return None
+    normalized = str(value).strip().lower()
+    if not normalized or normalized == "auto":
+        return None
+    match = re.fullmatch(r"([1-9][0-9]*)x([1-9][0-9]*)", normalized)
+    if match:
+        return "exact", (int(match.group(1)), int(match.group(2)))
+    minimum_edge = {"1k": 1024, "2k": 2048, "4k": 3840}.get(normalized)
+    if minimum_edge is not None:
+        return "minimum-edge", (minimum_edge, minimum_edge)
+    return None
+
+
+def _warn_result_issues(
+    info: Optional[ImageInfo],
+    *,
+    path: Path,
+    expected_format: Optional[Any],
+    expected_size: Optional[Any],
+    expected_background: Optional[Any],
+) -> None:
+    warnings: List[str] = []
+    normalized_format = _normalize_expected_format(expected_format)
+    if info is None:
+        warnings.append("返回内容无法识别为 PNG、JPEG 或 WebP")
+    else:
+        if normalized_format and info.format != normalized_format:
+            warnings.append(f"请求格式为 {normalized_format.upper()}，实际返回 {info.format.upper()}")
+
+        size_check = _requested_size_check(expected_size)
+        if size_check and info.width is None:
+            warnings.append(f"请求尺寸为 {expected_size}，但无法读取返回图片尺寸")
+        elif size_check and info.width is not None and info.height is not None:
+            check_type, expected_dimensions = size_check
+            if check_type == "exact" and (info.width, info.height) != expected_dimensions:
+                warnings.append(
+                    f"请求尺寸为 {expected_size}，实际返回 {info.width}x{info.height}"
+                )
+            elif check_type == "minimum-edge" and max(info.width, info.height) < expected_dimensions[0]:
+                warnings.append(
+                    f"请求至少 {str(expected_size).upper()}，实际返回 {info.width}x{info.height}"
+                )
+
+        if str(expected_background or "").strip().lower() == "transparent" and info.has_alpha is False:
+            warnings.append("请求透明背景，但返回图片未检测到 Alpha 通道")
+
+    if warnings:
+        print(
+            f"警告：{path.name}：{'；'.join(warnings)}。仍按原路径保存，不会中断流程。",
+            file=sys.stderr,
+        )
+
+
 def _download_url(url: str, timeout: int) -> bytes:
     req = urllib.request.Request(url, method="GET", headers={"Accept": "image/*,*/*"})
     try:
@@ -575,6 +741,10 @@ def _write_response_images(
     output_paths: List[Path],
     force: bool,
     timeout: int,
+    *,
+    expected_format: Optional[Any] = None,
+    expected_size: Optional[Any] = None,
+    expected_background: Optional[Any] = None,
 ) -> None:
     items = _extract_response_items(response, operation="Image response decoding")
     if len(items) > len(output_paths):
@@ -587,7 +757,22 @@ def _write_response_images(
     paths = output_paths[: len(items)]
     _ensure_writable(paths, force)
     for item, path in zip(items, paths):
-        path.write_bytes(_item_to_bytes(item, timeout))
+        image_bytes = _item_to_bytes(item, timeout)
+        try:
+            info = _inspect_image_bytes(image_bytes)
+            _warn_result_issues(
+                info,
+                path=path,
+                expected_format=expected_format,
+                expected_size=expected_size,
+                expected_background=expected_background,
+            )
+        except Exception as exc:  # pragma: no cover - defensive non-blocking guard
+            print(
+                f"警告：{path.name}：结果校验未完成（{exc.__class__.__name__}），仍按原路径保存，不会中断流程。",
+                file=sys.stderr,
+            )
+        path.write_bytes(image_bytes)
         print(f"Wrote {path}")
 
 
@@ -646,7 +831,15 @@ def _do_generate(args: argparse.Namespace) -> None:
     started = time.time()
     response = _request_json(url, payload, api_key, args.timeout)
     print(f"Generation completed in {time.time() - started:.1f}s.", file=sys.stderr)
-    _write_response_images(response, outputs, args.force, args.timeout)
+    _write_response_images(
+        response,
+        outputs,
+        args.force,
+        args.timeout,
+        expected_format=payload.get("output_format", output_format),
+        expected_size=payload.get("size", args.size),
+        expected_background=payload.get("background"),
+    )
 
 
 def _do_edit(args: argparse.Namespace) -> None:
@@ -685,7 +878,15 @@ def _do_edit(args: argparse.Namespace) -> None:
     started = time.time()
     response = _request_multipart(url, fields, files, api_key, args.timeout)
     print(f"Edit completed in {time.time() - started:.1f}s.", file=sys.stderr)
-    _write_response_images(response, outputs, args.force, args.timeout)
+    _write_response_images(
+        response,
+        outputs,
+        args.force,
+        args.timeout,
+        expected_format=payload.get("output_format", output_format),
+        expected_size=payload.get("size", args.size),
+        expected_background=payload.get("background"),
+    )
 
 
 def _add_common_request_args(parser: argparse.ArgumentParser) -> None:

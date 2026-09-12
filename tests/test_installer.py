@@ -123,7 +123,7 @@ class InstallerTests(unittest.TestCase):
 
             installed_skill = skills_dir / "custom-image-generation"
             self.assertTrue((installed_skill / "SKILL.md").is_file())
-            self.assertEqual((installed_skill / "VERSION").read_text(encoding="utf-8").strip(), "2.1.0")
+            self.assertEqual((installed_skill / "VERSION").read_text(encoding="utf-8").strip(), "2.1.1")
 
             config = json.loads(config_file.read_text(encoding="utf-8"))
             self.assertEqual(config["api_url"], "https://api.example.com/v1")
@@ -225,7 +225,7 @@ class InstallerTests(unittest.TestCase):
             )
 
             installed_skill = root / ".codex" / "skills" / "custom-image-generation"
-            self.assertEqual((installed_skill / "VERSION").read_text(encoding="utf-8").strip(), "2.1.0")
+            self.assertEqual((installed_skill / "VERSION").read_text(encoding="utf-8").strip(), "2.1.1")
             self.assertFalse(legacy_skill.exists())
             backups = list((root / ".codex" / "skill-backups").glob("custom-image-generation-legacy.backup-*"))
             self.assertEqual(len(backups), 1)

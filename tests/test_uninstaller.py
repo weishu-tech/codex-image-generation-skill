@@ -21,7 +21,7 @@ RUNTIME_MARKER = ".codex-image-generation-managed-python-runtime"
 PYTHON_VERSION = "3.12.10"
 
 
-def _write_skill(path: Path, version: str = "2.1.0") -> None:
+def _write_skill(path: Path, version: str = "2.1.1") -> None:
     path.mkdir(parents=True)
     (path / "SKILL.md").write_text(
         "---\nname: custom-image-generation\ndescription: test fixture\n---\n",
