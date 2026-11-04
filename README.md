@@ -6,7 +6,7 @@
 
 ## 一键安装
 
-从 [Releases](https://github.com/xiaofengtongxue-lab/codex-image-generation-skill/releases) 下载并解压：
+从 [Releases](https://github.com/weishu-tech/codex-image-generation-skill/releases) 下载并解压：
 
 ```text
 image-generation-installer.zip
@@ -26,7 +26,7 @@ API 地址末尾没有精确的 `/v1` 时，安装器会自动补充；已经带
 
 ## 更新到仓库最新版本
 
-本项目不直接修改 Codex 官方内置 Skill，也不要求用户手动替换 `~/.codex/skills/.system/imagegen`。每次发布都会在本仓库的 [Releases](https://github.com/xiaofengtongxue-lab/codex-image-generation-skill/releases) 提供最新 `image-generation-installer.zip`：
+本项目不直接修改 Codex 官方内置 Skill，也不要求用户手动替换 `~/.codex/skills/.system/imagegen`。每次发布都会在本仓库的 [Releases](https://github.com/weishu-tech/codex-image-generation-skill/releases) 提供最新 `image-generation-installer.zip`：
 
 1. 下载并解压最新压缩包。
 2. macOS 双击 `install-macos.command`，Windows 双击 `install-windows.bat`。
